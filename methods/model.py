@@ -2,13 +2,13 @@
 # coding: utf-8
 
 import numpy as np
-import networkx as nx 
+import heapq as hq
 
 from methods.dists import random_pwl, random_pwls_perturb, random_unifs, random_pwls
 
-def initialize_ADmodel(N, scaling="pwl", coupling=False, **kwargs):
+def create_nodes(N, scaling="const", coupling=False, **kwargs):
     '''
-    Initialize AD network of size N with:
+    Initialize the underlying of size N with:
     activity distr:  f(x,β) = β / x^(β+1) with possible scale & shift (see scipy.stats.pareto)
     if theta: activity/attractivity joint distribution with an available copula (see methods.dists.random_unifs)
     # leave open the possibility of adding global network constraints (e.g. SBM, ABM)
@@ -21,121 +21,115 @@ def initialize_ADmodel(N, scaling="pwl", coupling=False, **kwargs):
         elif scaling=="unif":
             act_vect = np.random.random(N)
             attr_vect = act_vect
+        elif scaling=="const":
+            act_vect = np.ones(N)
+            attr_vect = act_vect
         else:
-            raise ValueError("Scaling must be 'pwl' or 'unif'.")
+            raise ValueError("Scaling must be 'pwl' or 'unif' or 'const'.")
     else:
         if scaling=="pwl":
             act_vect, attr_vect = random_pwls(N, **kwargs)
         elif scaling=="unif":
             act_vect, attr_vect = random_unifs(N, **{k: kwargs[k] for k in kwargs.keys() & {'copula', 'reversed', 'theta', 'resample'}})
         else:
-            raise ValueError("Scaling must be 'pwl' or 'unif'.")
-    # create list of nodes; attractivity is normalized; activity is scaled to model time
-    nodes = [(i,{"act":act,"attr":attr,"attr_prob":attr_prob}) for i, act, attr, attr_prob in zip(range(N), act_vect, attr_vect, attr_vect/np.sum(attr_vect))]
-    # create the network
-    G = nx.MultiDiGraph()
-    G.add_nodes_from(nodes)
-    return G
+            raise ValueError("Scaling must be 'pwl' or 'unif'. Cannot use 'const' with coupling.")
+    # create dictionary of nodes
+    nodes = {i:{} for i in range(N)}
+    for node in nodes:
+        nodes[node]["act"] = act_vect[node]
+        nodes[node]["attr"] = attr_vect[node]
+    # return the node dictionary
+    return nodes
 
-def activate(distribution=np.random.exponential,**kwargs):
+def initialize_activations(nodes,**kwargs):
+    '''
+    Initialize the activation heap for the given nodes
+    '''
+    # create a min heap of activations, keyed by the activation time
+    activations = [(activate(0,nodes[node]["act"],**kwargs), node) for node in nodes]
+    hq.heapify(activations)
+    return activations
+
+def initialize_attractivities(nodes,**kwargs):
+    '''
+    Initialize the attractivities dictionary for the given nodes
+    '''
+    # attrativity sums to one, keyed by node
+    total = sum([nodes[node]["attr"] for node in nodes])
+    attractivities = {node:nodes[node]["attr"]/total for node in nodes}
+    return attractivities
+
+def initialize_balances(nodes,monies=100,distribution=np.ones,**kwargs):
+    '''
+    Initialize the balances for the given nodes
+    ''' 
+    # create a dictionary of balances, keyed by node
+    bal_vect = monies*distribution(len(nodes),**kwargs)
+    balances = {node:bal_vect[node] for node in nodes}
+    return balances
+
+def activate(now,scale,distribution=np.random.exponential,**kwargs):
     '''
     Get the next activation time for the given node
     '''
     # draw inter-event time from the relevant distribution
-    iit = distribution(**kwargs) # need scale=scale for exponential
-    return iit
+    next = now + distribution(scale=scale)  # need to pass the parameter(s)
+    return next
 
-def select(nodes):
+def select(attractivities):
     '''
     Select a node to transact with
     '''
     # select target node
-    node_j = np.random.choice(nodes.keys, p=nodes.values)
+    node_j = np.random.choice(list(attractivities.keys()), p=list(attractivities.values()))
     return node_j
 
-def pay(balances, node_i, node_j ,distribution=np.random.beta, **kwargs):
+def pay(node_i, node_j, balances, distribution=np.random.beta, beta_a=1, beta_b=1):
     '''
-    Pay the selected node
+    Pay the given node
     '''
     # sample transaction weight
-    edge_w = balances[node_i]*distribution(**kwargs) # need beta_a, beta_b for beta
+    edge_w = balances[node_i]*distribution(beta_a,beta_b) # need to pass the parameters
     # process the transaction
     balances[node_i] -= edge_w
     balances[node_j] += edge_w
     # return the transaction details
     return edge_w
 
-def transact(activations,balances):
+def transact(nodes,activations,attractivities,balances):
     '''
-    Update the model by one step
+    Simulate the next transaction
     '''
     # select next active node from the heap
-    activation_time, node_i = activations.pop()
+    now, node_i = hq.heappop(activations)
     # have the node select a target to transact with
-    node_j = select(nodes) ### need to pass the probability distribution
+    node_j = select(attractivities)
     # pay the target node
-    edge_w = pay(balances, node_i, node_j, beta_a, beta_b) ### need to pass the parameters
+    amount = pay(node_i, node_j, balances) 
     # update the next activation time for the node
-    activations.push(activate(), node_i) ### need to pass the parameter
-    # return the transaction details
-    return {"timestamp":edge_t,
+    next = activate(now,nodes[node_i]["act"])
+    hq.heappush(activations,(next, node_i))
+    # return the transaction, the updated balances, and the updated activations
+    return {"timestamp":now,
             "source":node_i,
             "target":node_j,
-            "amount":edge_w,
-            "source_bal":bal[node_i],
-            "target_bal":bal[node_j]}
+            "amount":amount,
+            "source_bal":balances[node_i],
+            "target_bal":balances[node_j]}
 
-
-def generate_ADtnet(init_G, tmax=7): # let's do a week's worth of transactions at once
+def run_default(N,T):
     '''
-    Run the AD model of the given set of nodes for the given length of time 
-    Node activations are a poisson process, with a rate given by the activity of the node
-    # leave open the possibility of using a memory network of some sort
-    Return the AD temporal network
+    Run the model to generate T transactions, printed to stdout
     '''
-    # don't mess with the input graph
-    G = init_G.copy()
-    # retrieve the attractiveness values
-    nodes, attr_prob = zip(*G.nodes('attr_prob'))
-    # loop through nodes, adding their activations
-    for node_i, node_act in G.nodes('act'):
-        t_tot = 0
-        scale = 1/node_act
-        while(True):
-            # exponential inter-event time
-            t_tot += np.random.exponential(scale=scale)   # can we get the whole series of activations at once? ..idk
-            if t_tot  > tmax:
-                break
-            # select target node
-            node_j = np.random.choice(nodes, p=attr_prob)
-            # add target node to 
-            G.add_edge(node_i,node_j,time=t_tot)       # is there a reason to dis-allow self-loops?
-    # return the temporal graph
-    return G
-
-def model(G, bal, beta_a=1, beta_b=1): # use a Beta distribution w/ default uniform fraction
-    '''
-    Run through the AD temporal network and allocate weights compatible with a transaction process
-    The initial balance can/should be given
-        -- the default is to give everyone the same amount of money
-    The share of the balance to send in a transaction is drawn from a Beta distribution
-        -- the default values for the parameters make it a uniform fraction
-    Yeild the transaction data
-    '''
-    # Initilize balances that are not given to be 0
-    missings = G.nodes - set(bal.keys())
-    init_bal = {node_i:0 for node_i in missings} # we can't start with all zeros, bal is REQUIRED
-    bal.update(init_bal)
-    
-    # retrieve the edges and their time
-    temporal_edges = sorted(G.edges.data('time'), key=lambda nnt: nnt[2])
-    
-    # Loop though to sample for transaction weight and update balances
-    for node_i, node_j, edge_t in temporal_edges:
-        # sample transaction weight
-        edge_w = bal[node_i]*np.random.beta(beta_a,beta_b) # update later # faster to generate all at once? 
-        # return the transaction details
-        yield (node_i,node_j,edge_t,edge_w)
-        # process the transaction
-        bal[node_i] -= edge_w
-        bal[node_j] += edge_w
+    # initialize the model
+    nodes = create_nodes(N)
+    activations = initialize_activations(nodes)
+    attractivities = initialize_attractivities(nodes)
+    balances = initialize_balances(nodes)
+    # print the output header
+    header = ["timestamp","source","target","amount","source_bal","target_bal"]
+    print(",".join(header))
+    # run the model
+    for i in range(T):
+        transaction = transact(nodes,activations,attractivities,balances)
+        print(",".join([str(transaction[term]) for term in header]))

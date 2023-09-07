@@ -1,19 +1,14 @@
 # Transactions
 
-This is a mechanistic, stochastic, generative model for financial transactions as recorded within a hypothetical universal payment system. The simplest possible version of the model: a group of N identical nodes activate at a uniform rate in continuous time, send a transaction to a random other node, and fund this transaction with a random fraction of their present account balance.
+This is a mechanistic, stochastic, generative model for financial transactions as recorded within a hypothetical universal payment system. The simplest possible version of the model: a group of N identical nodes activate as a memoryless point process in continuous time, send a transaction to a random other node, and fund this transaction with a random fraction of their present account balance.
 
 The model itself has three modules:
-* ACTIVATION. This module simulates node activation, given a node and its activity. 
-* SELECTION. This module simulates the selection of a target for a transaction, given an activated node.
+* ACTIVATION. This module simulates node activation, given the present time and a node's activity. 
+* SELECTION. This module simulates the selection of a target for a transaction, given the attractivity of all nodes.
 * PAYMENT. This module simulates a payment, given two nodes and the present account balances.
 
-The three modules are strung together in ` `. Notably, this involves storing the next node activation for each node in a min heap by timestamp so that the present account balances can be used in the TRANSACTION and (crucially) PAYMENT step.
+The three modules are strung together in `transact`, which simulates the next transaction. Notably, this involves storing the next node activation for each node in a min heap keyed by the timestamp so that transactions are simulated in time order.
 
-Using ` ` initializes the model and runs it. It is straightforward to run the model over many sequential chucks of time (e.g. simulating 52 weeks) when the activity distribution is poissonian (otherwise, it would need to be engineered differently).
+The system being modelled consists of N nodes, for now with simply a value for each of activity and attractiveness. Initializing the model populates the heap with the first activations, normalizes the attractivity, and gives each node an initial balance.
 
-Each step of the model has various input parameters; the defaults produce the simplest possible version.
-
-Running the model requires a vector of initial balances. Initilaizing the model requires  
-
-
-
+Using `run_default(N,T)` initializes the model with N nodes and uses it to simulate T transactions, as an example.
