@@ -4,7 +4,7 @@ This is a mechanistic, stochastic, generative model for financial transactions a
 
 The model itself has three modules:
 * `activate` - this module simulates node activation, given the present time and a node's activity. 
-* `select` - this module simulates the selection of a target for a transaction, given the attractivity of all nodes.
+* `select` - this module simulates selection of a target for a transaction, given node attractivities.
 * `pay` - this module simulates a payment, given two nodes and the present account balances.
 
 The three modules are strung together in `transact`, which simulates the next transaction. Notably, this involves storing the next node activation for each node in a min heap keyed by the timestamp so that transactions are simulated in time order.
