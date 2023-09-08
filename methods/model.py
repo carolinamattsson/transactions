@@ -96,6 +96,22 @@ def pay(node_i, node_j, balances, distribution=np.random.beta, beta_a=1, beta_b=
     # return the transaction details
     return edge_w
 
+def interact(nodes,activations,attractivities):
+    '''
+    Simulate the next interaction
+    '''
+    # select next active node from the heap
+    now, node_i = hq.heappop(activations)
+    # have the node select a target to transact with
+    node_j = select(attractivities)
+    # update the next activation time for the node
+    next = activate(now,nodes[node_i]["act"])
+    hq.heappush(activations,(next, node_i))
+    # return the transaction, the updated balances, and the updated activations
+    return {"timestamp":now,
+            "source":node_i,
+            "target":node_j}
+
 def transact(nodes,activations,attractivities,balances):
     '''
     Simulate the next transaction
@@ -117,7 +133,23 @@ def transact(nodes,activations,attractivities,balances):
             "source_bal":balances[node_i],
             "target_bal":balances[node_j]}
 
-def run_default(N,T):
+def run_interactions(N,T):
+    '''
+    Run the model to generate T interactions, printed to stdout
+    '''
+    # initialize the model
+    nodes = create_nodes(N)
+    activations = initialize_activations(nodes)
+    attractivities = initialize_attractivities(nodes)
+    # print the output header
+    header = ["timestamp","source","target","amount","source_bal","target_bal"]
+    print(",".join(header))
+    # run the model
+    for i in range(T):
+        interaction = interact(nodes,activations,attractivities)
+        print(",".join([str(interaction[term]) for term in header]))
+
+def run_transactions(N,T):
     '''
     Run the model to generate T transactions, printed to stdout
     '''
