@@ -73,7 +73,7 @@ def activate(now,scale,distribution=np.random.exponential,**kwargs):
     Get the next activation time for the given node
     '''
     # draw inter-event time from the relevant distribution
-    next = now + distribution(scale=scale)  # need to pass the parameter(s)
+    next = now + distribution(scale=scale,**kwargs)  # need to pass the parameter(s)
     return next
 
 def select(attractivities):
@@ -112,7 +112,7 @@ def interact(nodes,activations,attractivities):
             "source":node_i,
             "target":node_j}
 
-def transact(nodes,activations,attractivities,balances):
+def transact(nodes,activations,attractivities,balances,**kwargs):
     '''
     Simulate the next transaction
     '''
@@ -121,7 +121,7 @@ def transact(nodes,activations,attractivities,balances):
     # have the node select a target to transact with
     node_j = select(attractivities)
     # pay the target node
-    amount = pay(node_i, node_j, balances) 
+    amount = pay(node_i, node_j, balances, **kwargs) 
     # update the next activation time for the node
     next = activate(now,nodes[node_i]["act"])
     hq.heappush(activations,(next, node_i))
