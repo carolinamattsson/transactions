@@ -9,6 +9,23 @@ from scipy import stats
 
 import pycop.simulation as cop
 
+def random_pareto(N, beta=2.0, mean=1):
+    '''
+    Generate a vector size N with pareto distributed values 
+    Pareto: f(x,β) = β / x^(β+1) scaled & shifted such that the mean is 'mean'
+    The x_min corresponds to that on wikipedia, where alpha is used instead of beta
+    '''
+    assert beta > 1, "The shape parameter must be greater than 1."
+    if beta == np.inf:
+        return np.full(N, mean)
+    x_min = (beta-1)/beta # getting the average activity to be 'mean'
+    unif = np.random.random(N)
+    #pareto = stats.pareto(beta,loc=mean*(x_min-1),scale=mean)
+    pareto = stats.pareto(beta,scale=mean*x_min)
+    pwl = pareto.ppf(unif)
+    # now return
+    return pwl
+
 def random_pwl(N, beta=1.0, loc=0, scale=1):
     '''
     Generate a vector size N with pareto distributed values 

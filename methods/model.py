@@ -4,7 +4,7 @@
 import numpy as np
 import heapq as hq
 
-from methods.dists import random_pwl, random_pwls_perturb, random_unifs, random_pwls
+from methods.dists import random_pareto, random_pwl, random_pwls_perturb, random_unifs, random_pwls
 
 def create_nodes(N, scaling="const", coupling=False, **kwargs):
     '''
@@ -15,7 +15,10 @@ def create_nodes(N, scaling="const", coupling=False, **kwargs):
     '''
     # create activity and attractivity vectors    
     if not coupling:
-        if scaling=="pwl":
+        if scaling=="pareto":
+            act_vect = random_pareto(N, **{k: kwargs[k] for k in kwargs.keys() & {'beta', 'mean'}})
+            attr_vect = act_vect
+        elif scaling=="pwl":
             act_vect = random_pwl(N, **{k: kwargs[k] for k in kwargs.keys() & {'beta', 'loc', 'scale'}})
             attr_vect = act_vect
         elif scaling=="unif":
@@ -25,7 +28,7 @@ def create_nodes(N, scaling="const", coupling=False, **kwargs):
             act_vect = np.ones(N)
             attr_vect = act_vect
         else:
-            raise ValueError("Scaling must be 'pwl' or 'unif' or 'const'.")
+            raise ValueError("Scaling must be 'pareto' or 'pwl' or 'unif' or 'const'.")
     else:
         if scaling=="pwl":
             act_vect, attr_vect = random_pwls(N, **kwargs)
@@ -41,16 +44,16 @@ def create_nodes(N, scaling="const", coupling=False, **kwargs):
     # return the node dictionary
     return nodes
 
-def initialize_activations(nodes,**kwargs):
+def initialize_activations(nodes,iet=np.random.exponential):
     '''
     Initialize the activation heap for the given nodes
     '''
     # create a min heap of activations, keyed by the activation time
-    activations = [(activate(0,nodes[node]["act"],**kwargs), node) for node in nodes]
+    activations = [(activate(0,nodes[node]["act"],iet), node) for node in nodes]
     hq.heapify(activations)
     return activations
 
-def initialize_attractivities(nodes,**kwargs):
+def initialize_attractivities(nodes):
     '''
     Initialize the attractivities dictionary for the given nodes
     '''
@@ -59,21 +62,21 @@ def initialize_attractivities(nodes,**kwargs):
     attractivities = {node:nodes[node]["attr"]/total for node in nodes}
     return attractivities
 
-def initialize_balances(nodes,monies=100,distribution=np.ones,**kwargs):
+def initialize_balances(nodes,monies=100,distribution=np.ones):
     '''
     Initialize the balances for the given nodes
     ''' 
     # create a dictionary of balances, keyed by node
-    bal_vect = monies*distribution(len(nodes),**kwargs)
+    bal_vect = monies*distribution(len(nodes))
     balances = {node:bal_vect[node] for node in nodes}
     return balances
 
-def activate(now,scale,distribution=np.random.exponential,**kwargs):
+def activate(now,activity,distribution):
     '''
     Get the next activation time for the given node
     '''
     # draw inter-event time from the relevant distribution
-    next = now + distribution(scale=scale,**kwargs)  # need to pass the parameter(s)
+    next = now + activity*distribution()  # need to pass the parameter(s)
     return next
 
 def select(attractivities):
@@ -84,19 +87,19 @@ def select(attractivities):
     node_j = np.random.choice(list(attractivities.keys()), p=list(attractivities.values()))
     return node_j
 
-def pay(node_i, node_j, balances, distribution=np.random.beta, beta_a=1, beta_b=1):
+def pay(node_i, node_j, balances, distribution):
     '''
     Pay the given node
     '''
     # sample transaction weight
-    edge_w = balances[node_i]*distribution(beta_a,beta_b) # need to pass the parameters
+    edge_w = balances[node_i]*distribution() # always pass the parameters as a part of the distribution
     # process the transaction
     balances[node_i] -= edge_w
     balances[node_j] += edge_w
     # return the transaction details
     return edge_w
 
-def interact(nodes,activations,attractivities):
+def interact(nodes,activations,attractivities,iet=np.random.exponential):
     '''
     Simulate the next interaction
     '''
@@ -105,14 +108,14 @@ def interact(nodes,activations,attractivities):
     # have the node select a target to transact with
     node_j = select(attractivities)
     # update the next activation time for the node
-    next = activate(now,nodes[node_i]["act"])
+    next = activate(now,nodes[node_i]["act"],iet)
     hq.heappush(activations,(next, node_i))
     # return the transaction, the updated balances, and the updated activations
     return {"timestamp":now,
             "source":node_i,
             "target":node_j}
 
-def transact(nodes,activations,attractivities,balances,**kwargs):
+def transact(nodes,activations,attractivities,balances,iet=np.random.exponential,frac=lambda: np.random.beta(1,1)):
     '''
     Simulate the next transaction
     '''
@@ -121,9 +124,9 @@ def transact(nodes,activations,attractivities,balances,**kwargs):
     # have the node select a target to transact with
     node_j = select(attractivities)
     # pay the target node
-    amount = pay(node_i, node_j, balances, **kwargs) 
+    amount = pay(node_i, node_j, balances, frac) 
     # update the next activation time for the node
-    next = activate(now,nodes[node_i]["act"])
+    next = activate(now,nodes[node_i]["act"],iet)
     hq.heappush(activations,(next, node_i))
     # return the transaction, the updated balances, and the updated activations
     return {"timestamp":now,
