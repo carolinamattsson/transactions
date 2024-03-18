@@ -4,7 +4,7 @@
 import numpy as np
 import heapq as hq
 
-from methods.dists import random_pareto, random_pwl, random_pwls_perturb, random_unifs, random_pwls
+from methods.dists import random_pareto, random_paretos, random_pwl, random_pwls_perturb, random_unifs, random_pwls
 
 def create_nodes(N, scaling="const", coupling=False, **kwargs):
     '''
@@ -30,8 +30,10 @@ def create_nodes(N, scaling="const", coupling=False, **kwargs):
         else:
             raise ValueError("Scaling must be 'pareto' or 'pwl' or 'unif' or 'const'.")
     else:
+        if scaling=="pareto":
+            act_vect, attr_vect = random_paretos(N, **{k: kwargs[k] for k in kwargs.keys() & {'betas', 'means', 'copula', 'reversed', 'theta', 'resample'}})
         if scaling=="pwl":
-            act_vect, attr_vect = random_pwls(N, **kwargs)
+            act_vect, attr_vect = random_pwls(N, **{k: kwargs[k] for k in kwargs.keys() & {'copula', 'reversed', 'theta', 'resample'}})
         elif scaling=="unif":
             act_vect, attr_vect = random_unifs(N, **{k: kwargs[k] for k in kwargs.keys() & {'copula', 'reversed', 'theta', 'resample'}})
         else:

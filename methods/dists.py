@@ -26,6 +26,30 @@ def random_pareto(N, beta=2.0, mean=1):
     # now return
     return pwl
 
+def random_paretos(N, betas=(2.0,2.0), means=(1,1), **kwargs):
+    '''
+    Generate a vector size N with pareto distributed values 
+    Pareto: f(x,β) = β / x^(β+1) scaled & shifted such that the mean is 'mean'
+    The x_min corresponds to that on wikipedia, where alpha is used instead of beta
+    '''
+    assert betas[0] > 1, "The shape parameter must be greater than 1."
+    assert betas[1] > 1, "The shape parameter must be greater than 1."
+    x_min = ((betas[0]-1)/betas[0], (betas[1]-1)/betas[1]) # getting the average activity to be 'mean'
+    if betas[0] == np.inf and betas[1] == np.inf:
+        return np.full(N, means[0]), np.full(N, means[1])
+    elif betas[0] == np.inf:
+        return np.full(N, means[0]), random_pareto(N, betas[1], means[1])
+    elif betas[1] == np.inf:
+        return random_pareto(N, betas[0], means[0]), np.full(N, means[1])
+    else:
+        unif_1, unif_2 = random_unifs(N, **{k: kwargs[k] for k in kwargs.keys() & {'copula', 'reversed', 'theta', 'resample'}})
+        pareto_1 = stats.pareto(betas[0],scale=means[0]*x_min[0])
+        pareto_2 = stats.pareto(betas[1],scale=means[1]*x_min[1])
+        pwl_1 = pareto_1.ppf(unif_1)
+        pwl_2 = pareto_2.ppf(unif_2)
+        # now return them both
+        return pwl_1, pwl_2
+
 def random_pwl(N, beta=1.0, loc=0, scale=1):
     '''
     Generate a vector size N with pareto distributed values 
