@@ -9,24 +9,25 @@ from scipy import stats
 
 import pycop.simulation as cop
 
-def random_pareto(N, beta=2.0, mean=1):
+def random_pareto(N, beta=2.0, mean_iet=1):
     '''
     Generate a vector size N with pareto distributed values 
     Pareto: f(x,β) = β / x^(β+1) scaled & shifted such that the mean is 'mean'
     The x_min corresponds to that on wikipedia, where alpha is used instead of beta
     '''
     assert beta > 1, "The shape parameter must be greater than 1."
+    assert mean_iet > 0, "The mean inter-event time must be greater than 1."
+    mean_act = 1/mean_iet
     if beta == np.inf:
-        return np.full(N, mean)
-    x_min = (beta-1)/beta # getting the average activity to be 'mean'
+        return np.full(N, mean_act)
+    x_min = (beta-1)/beta # getting the average activity to be 1
+    pareto = stats.pareto(beta,scale=mean_act*x_min)
     unif = np.random.random(N)
-    #pareto = stats.pareto(beta,loc=mean*(x_min-1),scale=mean)
-    pareto = stats.pareto(beta,scale=mean*x_min)
     pwl = pareto.ppf(unif)
     # now return
     return pwl
 
-def random_paretos(N, betas=(2.0,2.0), means=(1,1), **kwargs):
+def random_paretos(N, betas=(2.0,2.0), means_iet=(1,1), **kwargs):
     '''
     Generate a vector size N with pareto distributed values 
     Pareto: f(x,β) = β / x^(β+1) scaled & shifted such that the mean is 'mean'
@@ -34,17 +35,20 @@ def random_paretos(N, betas=(2.0,2.0), means=(1,1), **kwargs):
     '''
     assert betas[0] > 1, "The shape parameter must be greater than 1."
     assert betas[1] > 1, "The shape parameter must be greater than 1."
+    assert means_iet[0] > 0, "The mean inter-event time must be greater than 1."
+    assert means_iet[1] > 0, "The mean inter-event time must be greater than 1."
+    means_act = (1/means_iet[0], 1/means_iet[1])
     x_min = ((betas[0]-1)/betas[0], (betas[1]-1)/betas[1]) # getting the average activity to be 'mean'
     if betas[0] == np.inf and betas[1] == np.inf:
-        return np.full(N, means[0]), np.full(N, means[1])
+        return np.full(N, means_act[0]), np.full(N, means_act[1])
     elif betas[0] == np.inf:
-        return np.full(N, means[0]), random_pareto(N, betas[1], means[1])
+        return np.full(N, means_act[0]), random_pareto(N, betas[1], means_iet[1])
     elif betas[1] == np.inf:
-        return random_pareto(N, betas[0], means[0]), np.full(N, means[1])
+        return random_pareto(N, betas[0], means_iet[0]), np.full(N, means_act[1])
     else:
         unif_1, unif_2 = random_unifs(N, **{k: kwargs[k] for k in kwargs.keys() & {'copula', 'reversed', 'theta', 'resample'}})
-        pareto_1 = stats.pareto(betas[0],scale=means[0]*x_min[0])
-        pareto_2 = stats.pareto(betas[1],scale=means[1]*x_min[1])
+        pareto_1 = stats.pareto(betas[0],scale=means_act[0]*x_min[0])
+        pareto_2 = stats.pareto(betas[1],scale=means_act[1]*x_min[1])
         pwl_1 = pareto_1.ppf(unif_1)
         pwl_2 = pareto_2.ppf(unif_2)
         # now return them both

@@ -6,38 +6,38 @@ import heapq as hq
 
 from methods.dists import random_pareto, random_paretos, random_pwl, random_pwls_perturb, random_unifs, random_pwls
 
-def create_nodes(N, scaling="const", coupling=False, **kwargs):
+def create_nodes(N, activity="const", coupling=False, **kwargs):
     '''
     Initialize the underlying of size N with:
-    activity distr:  f(x,β) = β / x^(β+1) with possible scale & shift (see scipy.stats.pareto)
+    Activity distr:  f(x,β) = β / x^(β+1) with possible scale & shift (see scipy.stats.pareto)
     if theta: activity/attractivity joint distribution with an available copula (see methods.dists.random_unifs)
     # leave open the possibility of adding global network constraints (e.g. SBM, ABM)
     '''
     # create activity and attractivity vectors    
     if not coupling:
-        if scaling=="pareto":
-            act_vect = random_pareto(N, **{k: kwargs[k] for k in kwargs.keys() & {'beta', 'mean'}})
+        if activity=="pareto":
+            act_vect = random_pareto(N, **{k: kwargs[k] for k in kwargs.keys() & {'beta', 'mean_iet'}})
             attr_vect = act_vect
-        elif scaling=="pwl":
+        elif activity=="pwl":
             act_vect = random_pwl(N, **{k: kwargs[k] for k in kwargs.keys() & {'beta', 'loc', 'scale'}})
             attr_vect = act_vect
-        elif scaling=="unif":
+        elif activity=="unif":
             act_vect = np.random.random(N)
             attr_vect = act_vect
-        elif scaling=="const":
-            act_vect = np.ones(N)
+        elif activity=="const":
+            act_vect = (1/kwargs['mean_iet'])*np.ones(N) if 'mean_iet' in kwargs else np.ones(N)
             attr_vect = act_vect
         else:
-            raise ValueError("Scaling must be 'pareto' or 'pwl' or 'unif' or 'const'.")
+            raise ValueError("Activity distribution must be 'pareto' or 'pwl' or 'unif' or 'const'.")
     else:
-        if scaling=="pareto":
-            act_vect, attr_vect = random_paretos(N, **{k: kwargs[k] for k in kwargs.keys() & {'betas', 'means', 'copula', 'reversed', 'theta', 'resample'}})
-        if scaling=="pwl":
+        if activity=="pareto":
+            act_vect, attr_vect = random_paretos(N, **{k: kwargs[k] for k in kwargs.keys() & {'betas', 'means_iet', 'copula', 'reversed', 'theta', 'resample'}})
+        if activity=="pwl":
             act_vect, attr_vect = random_pwls(N, **{k: kwargs[k] for k in kwargs.keys() & {'copula', 'reversed', 'theta', 'resample'}})
-        elif scaling=="unif":
+        elif activity=="unif":
             act_vect, attr_vect = random_unifs(N, **{k: kwargs[k] for k in kwargs.keys() & {'copula', 'reversed', 'theta', 'resample'}})
         else:
-            raise ValueError("Scaling must be 'pwl' or 'unif'. Cannot use 'const' with coupling.")
+            raise ValueError("Activity distribution must be 'pareto' or 'pwl' or 'unif'. Cannot use 'const' with coupling.")
     # create dictionary of nodes
     nodes = {i:{} for i in range(N)}
     for node in nodes:
@@ -64,12 +64,12 @@ def initialize_attractivities(nodes):
     attractivities = {node:nodes[node]["attr"]/total for node in nodes}
     return attractivities
 
-def initialize_balances(nodes,monies=100,distribution=np.ones):
+def initialize_balances(nodes,balances=lambda x: 100*np.ones(x)):
     '''
     Initialize the balances for the given nodes
     ''' 
     # create a dictionary of balances, keyed by node
-    bal_vect = monies*distribution(len(nodes))
+    bal_vect = balances(len(nodes))
     balances = {node:bal_vect[node] for node in nodes}
     return balances
 
@@ -78,7 +78,8 @@ def activate(now,activity,distribution):
     Get the next activation time for the given node
     '''
     # draw inter-event time from the relevant distribution
-    next = now + activity*distribution()  # need to pass the parameter(s)
+    mean_iet = 1/activity # invert the activity
+    next = now + mean_iet*distribution()  # need to pass the parameter(s)
     return next
 
 def select(attractivities):
