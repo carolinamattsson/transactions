@@ -142,7 +142,7 @@ def interact(nodes,activations,attractivities,iet=np.random.exponential):
             "source":node_i,
             "target":node_j}
 
-def transact(nodes,activations,attractivities,balances,iet=np.random.exponential,w=0.5):
+def transact(nodes,activations,attractivities,balances,iet=np.random.exponential,rate=0.5):
     '''
     Simulate the next transaction
     '''
@@ -151,7 +151,7 @@ def transact(nodes,activations,attractivities,balances,iet=np.random.exponential
     # have the node select a target to transact with
     node_j = select(attractivities)
     # pay the target node
-    amount = pay_share(node_i, node_j, balances, rate=w)
+    amount = pay_share(node_i, node_j, balances, rate=rate)
     # update the next activation time for the node
     next = activate(now,nodes[node_i]["act"],iet)
     hq.heappush(activations,(next, node_i))
