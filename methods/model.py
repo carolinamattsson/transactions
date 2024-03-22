@@ -3,6 +3,7 @@
 
 import numpy as np
 import heapq as hq
+from decimal import Decimal
 
 from methods.dists import random_pareto, random_paretos, random_pwl, random_pwls_perturb, random_unifs, random_pwls
 
@@ -64,12 +65,15 @@ def initialize_attractivities(nodes):
     attractivities = {node:nodes[node]["attr"]/total for node in nodes}
     return attractivities
 
-def initialize_balances(nodes,balances=lambda x: 100*np.ones(x)):
+def initialize_balances(nodes,balances=lambda x: 100*np.ones(x),decimals=None):
     '''
     Initialize the balances for the given nodes
     ''' 
     # create a dictionary of balances, keyed by node
     bal_vect = balances(len(nodes))
+    if decimals is not None:
+        bal_vect = np.round(bal_vect,decimals)
+        bal_vect = [Decimal(f"{bal:.{decimals}f}") for bal in bal_vect]
     balances = {node:bal_vect[node] for node in nodes}
     return balances
 
@@ -90,12 +94,32 @@ def select(attractivities):
     node_j = np.random.choice(list(attractivities.keys()), p=list(attractivities.values()))
     return node_j
 
-def pay(node_i, node_j, balances, distribution):
+def pay_fraction(node_i, node_j, balances, beta_a = 1, beta_b = 1):
     '''
     Pay the given node
     '''
     # sample transaction weight
-    edge_w = balances[node_i]*distribution() # always pass the parameters as a part of the distribution
+    if isinstance(balances[node_i],Decimal):
+        bal = float(balances[node_i])
+        decimals = -balances[node_i].as_tuple().exponent
+        edge_w = np.round(bal*np.random.beta(beta_a,beta_b),decimals)
+        edge_w = Decimal(f"{edge_w:.{decimals}f}")
+    else:
+        edge_w = balances[node_i]*np.random.beta(beta_a,beta_b)
+    # process the transaction
+    balances[node_i] -= edge_w
+    balances[node_j] += edge_w
+    # return the transaction details
+    return edge_w
+
+def pay_share(node_i, node_j, balances, rate=0.5):
+    '''
+    Pay the given node
+    '''
+    # sample transaction weight
+    decimals = -balances[node_i].as_tuple().exponent
+    edge_w = np.random.binomial(balances[node_i]*10**decimals,rate)/10**decimals
+    edge_w = Decimal(f"{edge_w:.{decimals}f}")
     # process the transaction
     balances[node_i] -= edge_w
     balances[node_j] += edge_w
@@ -118,7 +142,7 @@ def interact(nodes,activations,attractivities,iet=np.random.exponential):
             "source":node_i,
             "target":node_j}
 
-def transact(nodes,activations,attractivities,balances,iet=np.random.exponential,frac=lambda: np.random.beta(1,1)):
+def transact(nodes,activations,attractivities,balances,iet=np.random.exponential,w=0.5):
     '''
     Simulate the next transaction
     '''
@@ -127,7 +151,7 @@ def transact(nodes,activations,attractivities,balances,iet=np.random.exponential
     # have the node select a target to transact with
     node_j = select(attractivities)
     # pay the target node
-    amount = pay(node_i, node_j, balances, frac) 
+    amount = pay_share(node_i, node_j, balances, rate=w)
     # update the next activation time for the node
     next = activate(now,nodes[node_i]["act"],iet)
     hq.heappush(activations,(next, node_i))
