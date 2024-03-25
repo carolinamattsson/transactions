@@ -1,6 +1,6 @@
 # Transactions
 
-This is a mechanistic, stochastic, generative model for financial transactions as recorded within a hypothetical universal payment system. The simplest possible version of the model is this: a group of N identical nodes activate as a memoryless point process in continuous time, send a transaction to a random other node, and fund this transaction with a random fraction of their present account balance.
+This is a mechanistic, stochastic, generative model for financial transactions as recorded within a hypothetical universal payment system. The simplest possible version of the model is this: a group of N identical nodes activate as a memoryless point process in continuous time, send a transaction to a random other node, and fund this transaction with a sampled share of their present account balance.
 
 The model itself has three modules:
 * `activate` - this module simulates node activation, given the present time and a node's activity. 
