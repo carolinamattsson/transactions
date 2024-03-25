@@ -9,20 +9,17 @@ from scipy import stats
 
 import pycop.simulation as cop
 
-def random_pareto(N, beta=2.0, mean_iet=1):
+def scale_pareto(unif, beta=2.0):
     '''
     Generate a vector size N with pareto distributed values 
     Pareto: f(x,β) = β / x^(β+1) scaled & shifted such that the mean is 'mean'
     The x_min corresponds to that on wikipedia, where alpha is used instead of beta
     '''
     assert beta > 1, "The shape parameter must be greater than 1."
-    assert mean_iet > 0, "The mean inter-event time must be greater than 1."
-    mean_act = 1/mean_iet
     if beta == np.inf:
-        return np.full(N, mean_act)
+        return np.ones(len(unif))
     x_min = (beta-1)/beta # getting the average activity to be 1
-    pareto = stats.pareto(beta,scale=mean_act*x_min)
-    unif = np.random.random(N)
+    pareto = stats.pareto(beta,scale=x_min)
     pwl = pareto.ppf(unif)
     # now return
     return pwl
@@ -54,12 +51,11 @@ def random_paretos(N, betas=(2.0,2.0), means_iet=(1,1), **kwargs):
         # now return them both
         return pwl_1, pwl_2
 
-def random_pwl(N, beta=1.0, loc=0, scale=1):
+def scale_pwl(unif, beta=1.0, loc=0, scale=1):
     '''
     Generate a vector size N with pareto distributed values 
     pwl distrs: f(x,β) = β / x^(β+1) with possible scale & shift (for details see scipy.stats.pareto)
     '''
-    unif = np.random.random(N)
     pareto = stats.pareto(beta,loc=loc,scale=scale)
     pwl = pareto.ppf(unif)
     # now return
@@ -78,10 +74,11 @@ def random_pwls_perturb(N, pwl_beta=1.0, pwl_loc=0, pwl_scale=1, per_beta=1, per
     # now return them both
     return pwl, pwl_p
 
-def random_unifs(N, copula="clayton", reversed=True, theta=5, resample=100):
+def random_unifs(N, copula=None, reversed=True, theta=5, resample=100):
     '''
     Generate two vectors size N with uniform distributed values coupled by the given copula
     Resample from the copula up to 'resample' numbers of times so there are no 1s in the reversed vector
+    # nice one is reversed 'clayton' with theta=5
     '''
     if copula is not None:
         sample = 0

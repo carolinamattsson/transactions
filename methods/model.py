@@ -5,45 +5,67 @@ import numpy as np
 import heapq as hq
 from decimal import Decimal
 
-from methods.dists import random_pareto, random_paretos, random_pwl, random_pwls_perturb, random_unifs, random_pwls
+from methods.dists import random_unifs, scale_pareto, scale_pwl
 
-def create_nodes(N, activity="const", coupling=False, **kwargs):
+def create_nodes(N, activity="constant", fitness="constant", same_sample=False, same_params=False, mean_iet=1, **kwargs):
     '''
-    Initialize the underlying of size N with:
-    Activity distr:  f(x,β) = β / x^(β+1) with possible scale & shift (see scipy.stats.pareto)
-    if theta: activity/attractivity joint distribution with an available copula (see methods.dists.random_unifs)
+    Initialize activity and fitness values for N nodes, according to the specified distributions.
+    Specifying no arguments will result in all nodes having 1 for activity and fitness.
+        Alternatives are: 'pareto' and 'uniform' and 'pwl' for these distributions.
+    By default, the activity and fitness values are independently sampled.
+        Specify a copula and its parameters to sample correlated values from the respective distributions (see dists.py).
+        Or, specify same_sample=True to use the same sample for both distributions.
+    By default, the parameters for the distributions are given separately in the format: {param}_act + {param}_fit.
+        Specify same_params=True to use the same parameters for both distributions.
+    By default, the mean inter-event time is 1.
+        Specify a different mean inter-event time to scale the activity values accordingly.
+        The fitness values are scaled to be probabilities.
     # leave open the possibility of adding global network constraints (e.g. SBM, ABM)
     '''
-    # create activity and attractivity vectors    
-    if not coupling:
-        if activity=="pareto":
-            act_vect = random_pareto(N, **{k: kwargs[k] for k in kwargs.keys() & {'beta', 'mean_iet'}})
-            attr_vect = act_vect
-        elif activity=="pwl":
-            act_vect = random_pwl(N, **{k: kwargs[k] for k in kwargs.keys() & {'beta', 'loc', 'scale'}})
-            attr_vect = act_vect
-        elif activity=="unif":
-            act_vect = np.random.random(N)
-            attr_vect = act_vect
-        elif activity=="const":
-            act_vect = (1/kwargs['mean_iet'])*np.ones(N) if 'mean_iet' in kwargs else np.ones(N)
-            attr_vect = act_vect
-        else:
-            raise ValueError("Activity distribution must be 'pareto' or 'pwl' or 'unif' or 'const'.")
+    assert mean_iet > 0, "The mean inter-event time must be greater than 1."
+    # create activity and fitness spreads, together or separately
+    unifs = {}
+    if same_sample:
+        unifs['act'] = np.random.random(N)
+        unifs['fit'] = unifs['act']
     else:
-        if activity=="pareto":
-            act_vect, attr_vect = random_paretos(N, **{k: kwargs[k] for k in kwargs.keys() & {'betas', 'means_iet', 'copula', 'reversed', 'theta', 'resample'}})
-        if activity=="pwl":
-            act_vect, attr_vect = random_pwls(N, **{k: kwargs[k] for k in kwargs.keys() & {'copula', 'reversed', 'theta', 'resample'}})
-        elif activity=="unif":
-            act_vect, attr_vect = random_unifs(N, **{k: kwargs[k] for k in kwargs.keys() & {'copula', 'reversed', 'theta', 'resample'}})
+        # unless a copula and its parameters are specified, the sampled distributions are independent
+        unifs['act'], unifs['fit'] = random_unifs(N, **{k: kwargs[k] for k in kwargs.keys() & {'copula', 'reversed', 'theta', 'resample'}})
+    # assign the parameters for the distributions
+    params = {}
+    # scale up to the desired distributions
+    vects = {}
+    # different steps for the different distributions
+    for dist, label in [(activity, "act"), (fitness, "fit")]:
+        if dist=="constant":
+            vects[label] = np.ones(N)
+        elif dist=="uniform":
+            vects[label] = unifs[label]
+        elif dist=="pareto":
+            if same_params:
+                params[label] = kwargs['beta']
+            else:
+                params[label] = kwargs[f"beta_{label}"]
+            vects[label] = scale_pareto(unifs[label], beta=params[label])
+        elif dist=="pwl":
+            if same_params:
+                params[label] = {k: kwargs[k] for k in kwargs.keys() & {'beta', 'loc', 'scale'}}
+            else:
+                params[label] = {k: kwargs[k] for k in kwargs.keys() & {f"beta_{label}", f"loc_{label}", f"scale_{label}"}}
+            vects[label] = scale_pwl(unifs[label], **params[label])
         else:
-            raise ValueError("Activity distribution must be 'pareto' or 'pwl' or 'unif'. Cannot use 'const' with coupling.")
+            raise ValueError("Activity and fitness distributions must be 'pareto' or 'pwl' or 'unif' or 'const'.")
+    # scale activity to get the desired mean inter-event time
+    mean_act = 1/mean_iet
+    vects["act"] = mean_act*vects["act"]
+    # scale fitness to sum to one
+    total_fit = sum(vects["fit"])
+    vects["fit"] = vects["fit"]/total_fit
     # create dictionary of nodes
     nodes = {i:{} for i in range(N)}
     for node in nodes:
-        nodes[node]["act"] = act_vect[node]
-        nodes[node]["attr"] = attr_vect[node]
+        nodes[node]["act"] = vects["act"][node]
+        nodes[node]["attr"] = vects["fit"][node]
     # return the node dictionary
     return nodes
 
@@ -60,9 +82,8 @@ def initialize_attractivities(nodes):
     '''
     Initialize the attractivities dictionary for the given nodes
     '''
-    # attrativity sums to one, keyed by node
-    total = sum([nodes[node]["attr"] for node in nodes])
-    attractivities = {node:nodes[node]["attr"]/total for node in nodes}
+    # return the attractivity dictionary, keyed by node
+    attractivities = {node:nodes[node]["attr"] for node in nodes}
     return attractivities
 
 def initialize_balances(nodes,balances=lambda x: 100*np.ones(x),decimals=2):
@@ -82,8 +103,8 @@ def activate(now,activity,distribution):
     Get the next activation time for the given node
     '''
     # draw inter-event time from the relevant distribution
-    mean_iet = 1/activity # invert the activity
-    next = now + mean_iet*distribution()  # need to pass the parameter(s)
+    scale_iet = 1/activity # invert the activity
+    next = now + scale_iet*distribution()  # need to pass the parameter(s)
     return next
 
 def select(attractivities):
