@@ -65,7 +65,7 @@ def initialize_attractivities(nodes):
     attractivities = {node:nodes[node]["attr"]/total for node in nodes}
     return attractivities
 
-def initialize_balances(nodes,balances=lambda x: 100*np.ones(x),decimals=None):
+def initialize_balances(nodes,balances=lambda x: 100*np.ones(x),decimals=2):
     '''
     Initialize the balances for the given nodes
     ''' 
