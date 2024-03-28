@@ -3,6 +3,7 @@
 
 
 import sys
+import math
 import random
 import numpy as np
 from scipy import stats
@@ -122,3 +123,8 @@ def rnd_intertime(alpha, c, size=1, tmax=sys.float_info.max/2):
     r = np.random.random(size=size)
     r = r*( 1. - (c*tmax + 1)**-alpha )
     return ((1.-r)**(-1./alpha)-1)/c
+
+def balance_weibull(N, shape=1, mean=100):
+    '''Scale a weibull to the given mean. Sample N values.'''
+    scale = mean/(math.gamma(1+1/shape))
+    return scale*np.random.weibull(shape,size=N)
