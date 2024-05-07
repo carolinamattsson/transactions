@@ -115,7 +115,7 @@ def select(attractivities):
     node_j = np.random.choice(list(attractivities.keys()), p=list(attractivities.values()))
     return node_j
 
-def pay_fraction(node_i, node_j, balances, beta_a = 1, beta_b = 1):
+def pay_beta(node_i, node_j, balances, beta_a = 1, beta_b = 1):
     '''
     Pay the given node
     '''
@@ -133,7 +133,25 @@ def pay_fraction(node_i, node_j, balances, beta_a = 1, beta_b = 1):
     # return the transaction details
     return edge_w
 
-def pay_share(node_i, node_j, balances, rate=0.5):
+def pay_fraction(node_i, node_j, balances, frac = 0.5):
+    '''
+    Pay the given node
+    '''
+    # sample transaction weight
+    if isinstance(balances[node_i],Decimal):
+        bal = float(balances[node_i])
+        decimals = -balances[node_i].as_tuple().exponent
+        edge_w = np.round(bal*frac,decimals)
+        edge_w = Decimal(f"{edge_w:.{decimals}f}")
+    else:
+        edge_w = balances[node_i]*frac
+    # process the transaction
+    balances[node_i] -= edge_w
+    balances[node_j] += edge_w
+    # return the transaction details
+    return edge_w
+
+def pay_share(node_i, node_j, balances, rate = 0.5):
     '''
     Pay the given node
     '''
@@ -163,7 +181,7 @@ def interact(nodes,activations,attractivities,iet=np.random.exponential):
             "source":node_i,
             "target":node_j}
 
-def transact(nodes,activations,attractivities,balances,iet=np.random.exponential,rate=0.5):
+def transact(nodes,activations,attractivities,balances,iet=np.random.exponential,method="share",rate=0.5,frac=0.5,beta_a=1,beta_b=1):
     '''
     Simulate the next transaction
     '''
@@ -172,7 +190,12 @@ def transact(nodes,activations,attractivities,balances,iet=np.random.exponential
     # have the node select a target to transact with
     node_j = select(attractivities)
     # pay the target node
-    amount = pay_share(node_i, node_j, balances, rate=rate)
+    if method=="beta":
+        amount = pay_beta(node_i, node_j, balances, beta_a=beta_a, beta_b=beta_b)
+    elif method=="fraction":
+        amount = pay_fraction(node_i, node_j, balances, frac=frac)
+    else:
+        amount = pay_share(node_i, node_j, balances, rate=rate)
     # update the next activation time for the node
     next = activate(now,nodes[node_i]["act"],iet)
     hq.heappush(activations,(next, node_i))
