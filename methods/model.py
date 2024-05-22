@@ -25,7 +25,7 @@ def create_nodes(N, activity="constant", fitness="constant", same_sample=False, 
     assert mean_iet > 0, "The mean inter-event time must be greater than 1."
     # create activity and fitness spreads, together or separately
     unifs = {}
-    if same_sample:
+    if same_sample or ('theta' in kwargs and np.isinf(kwargs['theta'])):
         unifs['act'] = np.random.random(N)
         unifs['fit'] = unifs['act']
     else:
