@@ -10,13 +10,36 @@ from scipy import stats
 
 import pycop.simulation as cop
 
+def paired_samples(N, 
+                   same=False, 
+                   params={'copula':None},
+                   rng=np.random.default_rng()):
+    '''
+    Initialize activity and fitness values for N nodes, according to the specified distributions.
+    By default, the values are independently sampled.
+        Specify a copula and its parameters to sample correlated values from the respective distributions (see dists.py).
+        Or, specify same_sample=True to use the same sample for both distributions.
+    The parameters for the distributions are given as dictionaries.
+        The options are 'pareto' or 'pwl' or 'uniform' or 'constant', with their relevant parameters.
+    '''
+    # create activity and attractivity distributions, together or separately
+    unifs = {}
+    if same or ('theta' in params and np.isinf(params['theta'])):
+        unifs['act'] = rng.random(N)
+        unifs['att'] = unifs['act']
+    else:
+        # unless a copula and its parameters are specified, the sampled distributions are independent
+        unifs['act'], unifs['att'] = random_unifs(N, **params)
+    # return the vectors
+    return unifs['act'], unifs['att']
+
 def scale_pareto(unif, beta=2.0):
     '''
     Generate a vector size N with pareto distributed values
-    Pareto: f(x,β) = β / x^(β+1) scaled & shifted such that the mean is 'mean'
+    Pareto: f(x,β) = β / x^(β+1) scaled & shifted such that the mean is 1
     The x_min corresponds to that on wikipedia, where alpha is used instead of beta
     '''
-    assert beta > 1, "The shape parameter must be greater than 1."
+    assert beta > 1, "The 'beta' parameter must be greater than 1."
     if beta == np.inf:
         return np.ones(len(unif))
     x_min = (beta-1)/beta # getting the average activity to be 1
@@ -35,7 +58,7 @@ def scale_pwl(unif, beta=1.0, loc=0, scale=1):
     # now return
     return pwl
 
-def random_unifs(N, copula=None, reversed=True, theta=5, resample=100):
+def random_unifs(N, copula=None, reversed=False, theta=0, resample=100, rng=np.random.default_rng()):
     '''
     Generate two vectors size N with uniform distributed values coupled by the given copula
     Resample from the copula up to 'resample' numbers of times so there are no 1s in the reversed vector
@@ -55,7 +78,7 @@ def random_unifs(N, copula=None, reversed=True, theta=5, resample=100):
         else:
             return unif_1, unif_2
     else:
-        return np.random.random(N), np.random.random(N)
+        return rng.random(N), rng.random(N)
 
 def random_pwls_perturb(N, pwl_beta=1.0, pwl_loc=0, pwl_scale=1, per_beta=1, per_std=0):
     '''

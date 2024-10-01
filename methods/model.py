@@ -1,129 +1,117 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+import math
 import numpy as np
 import heapq as hq
 from decimal import Decimal
 
-from methods.dists import random_unifs, scale_pareto, scale_pwl
+from methods.dists import paired_samples, random_unifs, scale_pareto, scale_pwl
 
-def create_nodes(N, activity="constant", fitness="constant", same_sample=False, same_params=False, mean_iet=1, **kwargs):
+def create_nodes(N, activity=1, attractivity=1, spending=0.5, burstiness=1, mean_iet=1):
     '''
-    Initialize activity and fitness values for N nodes, according to the specified distributions.
-    Specifying no arguments will result in all nodes having 1 for activity and fitness.
-        Alternatives are: 'pareto' and 'uniform' and 'pwl' for these distributions.
-    By default, the activity and fitness values are independently sampled.
-        Specify a copula and its parameters to sample correlated values from the respective distributions (see dists.py).
-        Or, specify same_sample=True to use the same sample for both distributions.
-    By default, the parameters for the distributions are given separately in the format: {param}_act + {param}_fit.
-        Specify same_params=True to use the same parameters for both distributions.
-    By default, the mean inter-event time is 1.
-        Specify a different mean inter-event time to scale the activity values accordingly.
-        The fitness values are scaled to be probabilities.
-    # leave open the possibility of adding global network constraints (e.g. SBM, ABM)
+    Initialize node attributes from the given lists.
     '''
-    assert mean_iet > 0, "The mean inter-event time must be greater than 1."
-    # create activity and fitness spreads, together or separately
-    unifs = {}
-    if same_sample or ('theta' in kwargs and np.isinf(kwargs['theta'])):
-        unifs['act'] = np.random.random(N)
-        unifs['fit'] = unifs['act']
-    else:
-        # unless a copula and its parameters are specified, the sampled distributions are independent
-        unifs['act'], unifs['fit'] = random_unifs(N, **{k: kwargs[k] for k in kwargs.keys() & {'copula', 'reversed', 'theta', 'resample'}})
-    # assign the parameters for the distributions
-    params = {}
-    # scale up to the desired distributions
-    vects = {}
-    # different steps for the different distributions
-    for dist, label in [(activity, "act"), (fitness, "fit")]:
-        if dist=="constant":
-            vects[label] = np.ones(N)
-        elif dist=="uniform":
-            vects[label] = unifs[label]
-        elif dist=="pareto":
-            if same_params:
-                params[label] = kwargs['beta']
-            else:
-                params[label] = kwargs[f"beta_{label}"]
-            vects[label] = scale_pareto(unifs[label], beta=params[label])
-        elif dist=="pwl":
-            if same_params:
-                params[label] = {k: kwargs[k] for k in kwargs.keys() & {'beta', 'loc', 'scale'}}
-            else:
-                params[label] = {k: kwargs[k] for k in kwargs.keys() & {f"beta_{label}", f"loc_{label}", f"scale_{label}"}}
-            vects[label] = scale_pwl(unifs[label], **params[label])
+    # Input sanitation
+    def list_len_N(value, name):
+        if isinstance(value, (int, float, Decimal)):
+            return np.full(N, value)
+        elif isinstance(value, (list, np.ndarray)):
+            assert len(value) == N, f"Please give a list or array that is the length of N for '{name}'."
+            return np.array(value)
         else:
-            raise ValueError("Activity and fitness distributions must be 'pareto' or 'pwl' or 'unif' or 'const'.")
+            raise TypeError(f"The '{name}' attribute must be a single value or a list/array of length N.")
+    # Ensure that the attributes are the correct length
+    activity = list_len_N(activity, 'activity')
+    attractivity = list_len_N(attractivity, 'attractivity')
+    spending = list_len_N(spending, 'spending')
+    burstiness = list_len_N(burstiness, 'burstiness')
+    # Confirm that the attributes are valid
+    assert sum(activity) > 0, "The sum of the activity values must be greater than 0."
+    assert sum(attractivity) > 0, "The sum of the attractivity values must be greater than 0."
+    assert all([0 < spend <= 1 for spend in spending]), "The spending values must be between 0 and 1, exclusive of zero."
+    assert all([0 < burst for burst in burstiness]), "The burstiness values must be greater than zero."
     # scale activity to get the desired mean inter-event time
+    assert mean_iet > 0, "The mean inter-event time must be greater than 1."
     mean_act = 1/mean_iet
-    vects["act"] = mean_act*vects["act"]
-    # scale fitness to sum to one
-    total_fit = sum(vects["fit"])
-    vects["fit"] = vects["fit"]/total_fit
+    activity = mean_act*activity
+    # scale attractivities to sum to one
+    total_att = sum(attractivity)
+    attractivity = attractivity/total_att
     # create dictionary of nodes
+    # TODO: This could be changed into a networkx graph to allow for more complex interactions
     nodes = {i:{} for i in range(N)}
     for node in nodes:
-        nodes[node]["act"] = vects["act"][node]
-        nodes[node]["attr"] = vects["fit"][node]
+        nodes[node]["act"] = activity[node]
+        nodes[node]["att"] = attractivity[node]
+        nodes[node]["pay"] = spending[node]
+        nodes[node]["iet"] = (1./(math.gamma(1+1/burstiness[node])),burstiness[node])
     # return the node dictionary
     return nodes
 
-def initialize_activations(nodes,iet=np.random.exponential):
+def initialize_activations(nodes):
     '''
     Initialize the activation heap for the given nodes
     '''
     # create a min heap of activations, keyed by the activation time
-    activations = [(activate(0,nodes[node]["act"],iet), node) for node in nodes]
+    activations = [(activate(0,nodes[node]["act"],nodes[node]["iet"]), node) for node in nodes]
     hq.heapify(activations)
     return activations
 
 def initialize_attractivities(nodes):
     '''
-    Initialize the attractivities dictionary for the given nodes
+    Initialize the attractiveness dictionary for the given nodes
     '''
     # return the attractivity dictionary, keyed by node
-    attractivities = {node:nodes[node]["attr"] for node in nodes}
+    attractivities = {node:nodes[node]["att"] for node in nodes}
     return attractivities
 
-def initialize_balances(nodes,balances=lambda x: 100*np.ones(x),decimals=2):
+def initialize_balances(nodes,balances=None,decimals=4):
     '''
     Initialize the balances for the given nodes
-    ''' 
+    '''
+    # If the initial balances are not given, set them to the default value
+    if balances is None:
+        balances = np.ones(len(nodes))           # one unit of currency per node
+    assert len(balances) == len(nodes), f"Please give a list or array that is the length of N for 'balances'."
     # create a dictionary of balances, keyed by node
-    bal_vect = balances(len(nodes))
     if decimals is not None:
-        bal_vect = np.round(bal_vect,decimals)
+        bal_vect = np.round(balances,decimals)
         bal_vect = [Decimal(f"{bal:.{decimals}f}") for bal in bal_vect]
+    else:
+        bal_vect = np.float64(balances)
     balances = {node:bal_vect[node] for node in nodes}
     return balances
 
-def activate(now,activity,distribution):
+def activate(now,activity,distribution,rng=np.random.default_rng()):
     '''
     Get the next activation time for the given node
     '''
     # draw inter-event time from the relevant distribution
-    scale_iet = 1/activity # invert the activity
-    next = now + scale_iet*distribution()  # need to pass the parameter(s)
+    scale_act = 1/activity # invert the activity
+    shape_iet, scale_iet = distribution
+    next = now + scale_act*scale_iet*rng.weibull(a=shape_iet)
     return next
 
-def select(attractivities):
+def select(attractivities,rng=np.random.default_rng()):
     '''
     Select a node to transact with
     '''
     # select target node
-    node_j = np.random.choice(list(attractivities.keys()), p=list(attractivities.values()))
+    # TODO: This would need to be changed with a networkx graph to allow for more complex interactions
+    node_j = rng.choice(list(attractivities.keys()), p=list(attractivities.values()))
     return node_j
 
-def pay_beta(node_i, node_j, balances, beta_a = 1, beta_b = 1):
+def pay_beta(node_i, node_j, params, balances, rng=np.random.default_rng()):
     '''
     Pay the given node
     '''
     # sample transaction weight
+    beta_a, beta_b = params
     if isinstance(balances[node_i],Decimal):
         bal = float(balances[node_i])
         decimals = -balances[node_i].as_tuple().exponent
-        edge_w = np.round(bal*np.random.beta(beta_a,beta_b),decimals)
+        edge_w = np.round(bal*rng.beta(beta_a,beta_b),decimals)
         edge_w = Decimal(f"{edge_w:.{decimals}f}")
     else:
         edge_w = balances[node_i]*np.random.beta(beta_a,beta_b)
@@ -133,7 +121,7 @@ def pay_beta(node_i, node_j, balances, beta_a = 1, beta_b = 1):
     # return the transaction details
     return edge_w
 
-def pay_fraction(node_i, node_j, balances, frac = 0.5):
+def pay_fraction(node_i, node_j, frac, balances):
     '''
     Pay the given node
     '''
@@ -151,19 +139,19 @@ def pay_fraction(node_i, node_j, balances, frac = 0.5):
     # return the transaction details
     return edge_w
 
-def pay_share(node_i, node_j, balances, rate = 0.5):
+def pay_share(node_i, node_j, prob, balances):
     '''
     Pay the given node
     '''
     # sample transaction weight
     decimals = -balances[node_i].as_tuple().exponent
-    edge_w = np.random.binomial(balances[node_i]*10**decimals,rate)/10**decimals
-    edge_w = Decimal(f"{edge_w:.{decimals}f}")
+    txn_size = np.random.binomial(balances[node_i]*10**decimals,prob)/10**decimals
+    txn_size = Decimal(f"{txn_size:.{decimals}f}")
     # process the transaction
-    balances[node_i] -= edge_w
-    balances[node_j] += edge_w
-    # return the transaction details
-    return edge_w
+    balances[node_i] -= txn_size
+    balances[node_j] += txn_size
+    # return the transaction size
+    return txn_size
 
 def interact(nodes,activations,attractivities,iet=np.random.exponential):
     '''
@@ -174,14 +162,14 @@ def interact(nodes,activations,attractivities,iet=np.random.exponential):
     # have the node select a target to transact with
     node_j = select(attractivities)
     # update the next activation time for the node
-    next = activate(now,nodes[node_i]["act"],iet)
+    next = activate(now,nodes[node_i]["act"],nodes[node_i]["iet"])
     hq.heappush(activations,(next, node_i))
     # return the transaction, the updated balances, and the updated activations
     return {"timestamp":now,
             "source":node_i,
             "target":node_j}
 
-def transact(nodes,activations,attractivities,balances,iet=np.random.exponential,method="share",rate=0.5,frac=0.5,beta_a=1,beta_b=1):
+def transact(nodes,activations,attractivities,balances,method="share"):
     '''
     Simulate the next transaction
     '''
@@ -191,13 +179,13 @@ def transact(nodes,activations,attractivities,balances,iet=np.random.exponential
     node_j = select(attractivities)
     # pay the target node
     if method=="beta":
-        amount = pay_beta(node_i, node_j, balances, beta_a=beta_a, beta_b=beta_b)
+        amount = pay_beta(node_i, node_j, nodes[node_i]["pay"], balances)
     elif method=="fraction":
-        amount = pay_fraction(node_i, node_j, balances, frac=frac)
+        amount = pay_fraction(node_i, node_j, nodes[node_i]["pay"], balances)
     else:
-        amount = pay_share(node_i, node_j, balances, rate=rate)
+        amount = pay_share(node_i, node_j, nodes[node_i]["pay"], balances)
     # update the next activation time for the node
-    next = activate(now,nodes[node_i]["act"],iet)
+    next = activate(now,nodes[node_i]["act"],nodes[node_i]["iet"])
     hq.heappush(activations,(next, node_i))
     # return the transaction, the updated balances, and the updated activations
     return {"timestamp":now,
