@@ -5,6 +5,7 @@ import math
 import numpy as np
 import heapq as hq
 from decimal import Decimal
+from scipy.stats import betabinom
 
 from methods.dists import paired_samples, random_unifs, scale_pareto, scale_pwl
 
@@ -102,51 +103,41 @@ def select(attractivities,rng=np.random.default_rng()):
     node_j = rng.choice(list(attractivities.keys()), p=list(attractivities.values()))
     return node_j
 
-def pay_beta(node_i, node_j, params, balances, rng=np.random.default_rng()):
+def pay_random_share(node_i, node_j, params, balances, rng=np.random.default_rng()):
     '''
-    Pay the given node
+    Pay the selected node a random share of the available balance:
+        - If the balance is continuous, the transaction size is a Beta sampled fraction.
+        - If the balance is discrete, the transaction size is a Beta Binomial sample.
+    TODO: This function is not currently accessible in the model.
+    TODO: This would require initializing the params (beta_a, beta_b) instead of p.
     '''
     # sample transaction weight
     beta_a, beta_b = params
     if isinstance(balances[node_i],Decimal):
-        bal = float(balances[node_i])
-        decimals = -balances[node_i].as_tuple().exponent
-        edge_w = np.round(bal*rng.beta(beta_a,beta_b),decimals)
-        edge_w = Decimal(f"{edge_w:.{decimals}f}")
+        exp = balances[node_i].as_tuple().exponent
+        txn_size = betabinom(balances[node_i].scaleb(-exp),beta_a,beta_b)
+        txn_size = Decimal(txn_size).scaleb(exp)
     else:
-        edge_w = balances[node_i]*np.random.beta(beta_a,beta_b)
+        txn_size = balances[node_i]*rng.beta(beta_a,beta_b)
     # process the transaction
-    balances[node_i] -= edge_w
-    balances[node_j] += edge_w
+    balances[node_i] -= txn_size
+    balances[node_j] += txn_size
     # return the transaction details
-    return edge_w
+    return txn_size
 
-def pay_fraction(node_i, node_j, frac, balances):
+def pay_share(node_i, node_j, share, balances, rng=np.random.default_rng()):
     '''
-    Pay the given node
+    Pay the selected node a share of the available balance:
+        - If the balance is continuous, the transaction size is a fixed fraction.
+        - If the balance is discrete, the transaction size is a Binomial sample.
     '''
     # sample transaction weight
     if isinstance(balances[node_i],Decimal):
-        bal = float(balances[node_i])
-        decimals = -balances[node_i].as_tuple().exponent
-        edge_w = np.round(bal*frac,decimals)
-        edge_w = Decimal(f"{edge_w:.{decimals}f}")
+        exp = balances[node_i].as_tuple().exponent
+        txn_size = rng.binomial(balances[node_i].scaleb(-exp),share)
+        txn_size = Decimal(txn_size).scaleb(exp)
     else:
-        edge_w = balances[node_i]*frac
-    # process the transaction
-    balances[node_i] -= edge_w
-    balances[node_j] += edge_w
-    # return the transaction details
-    return edge_w
-
-def pay_share(node_i, node_j, prob, balances):
-    '''
-    Pay the given node
-    '''
-    # sample transaction weight
-    decimals = -balances[node_i].as_tuple().exponent
-    txn_size = np.random.binomial(balances[node_i]*10**decimals,prob)/10**decimals
-    txn_size = Decimal(f"{txn_size:.{decimals}f}")
+        txn_size = balances[node_i]*share
     # process the transaction
     balances[node_i] -= txn_size
     balances[node_j] += txn_size
@@ -178,10 +169,8 @@ def transact(nodes,activations,attractivities,balances,method="share"):
     # have the node select a target to transact with
     node_j = select(attractivities)
     # pay the target node
-    if method=="beta":
-        amount = pay_beta(node_i, node_j, nodes[node_i]["pay"], balances)
-    elif method=="fraction":
-        amount = pay_fraction(node_i, node_j, nodes[node_i]["pay"], balances)
+    if method=="random_share":
+        amount = pay_random_share(node_i, node_j, nodes[node_i]["pay"], balances)
     else:
         amount = pay_share(node_i, node_j, nodes[node_i]["pay"], balances)
     # update the next activation time for the node
