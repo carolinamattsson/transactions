@@ -7,7 +7,7 @@ import heapq as hq
 from decimal import Decimal
 from scipy.stats import betabinom
 
-from methods.dists import paired_samples, random_unifs, scale_pareto, scale_pwl
+from dists import paired_samples, random_unifs, scale_pareto, scale_pwl
 
 def create_nodes(N, activity=1, attractivity=1, spending=0.5, burstiness=1, mean_iet=1):
     '''
@@ -108,15 +108,23 @@ def pay_random_share(node_i, node_j, params, balances, rng=np.random.default_rng
     Pay the selected node a random share of the available balance:
         - If the balance is continuous, the transaction size is a Beta sampled fraction.
         - If the balance is discrete, the transaction size is a Beta Binomial sample.
+
+    Example:
+        For balances[0] = Decimal('12.34') with exp = -2:
+            12.34 -> 1234 (scaled), random sample -> 1100, rescaled -> 11.00.
+        For balances[1] = Decimal('123.4') with exp = -1:
+            123.4 -> 1234 (scaled), random sample -> 1200, rescaled -> 120.0.
+
     TODO: This function is not currently accessible in the model.
     TODO: This would require initializing the params (beta_a, beta_b) instead of p.
     '''
     # sample transaction weight
     beta_a, beta_b = params
     if isinstance(balances[node_i],Decimal):
-        exp = balances[node_i].as_tuple().exponent
-        txn_size = betabinom(balances[node_i].scaleb(-exp),beta_a,beta_b)
-        txn_size = Decimal(txn_size).scaleb(exp)
+        exp = balances[node_i].as_tuple().exponent # -(number of decimal places)
+        txn_size_dist = betabinom(balances[node_i].scaleb(-exp),beta_a,beta_b) # integer valued distribution
+        txn_size = txn_size_dist().rvs() # sample from the distribution
+        txn_size = Decimal(txn_size).scaleb(exp) # integer to decimal (e.g.: 1234 -> 12.34)
     else:
         txn_size = balances[node_i]*rng.beta(beta_a,beta_b)
     # process the transaction
@@ -134,7 +142,7 @@ def pay_share(node_i, node_j, share, balances, rng=np.random.default_rng()):
     # sample transaction weight
     if isinstance(balances[node_i],Decimal):
         exp = balances[node_i].as_tuple().exponent
-        txn_size = rng.binomial(balances[node_i].scaleb(-exp),share)
+        txn_size = rng.binomial(balances[node_i].scaleb(-exp),share) 
         txn_size = Decimal(txn_size).scaleb(exp)
     else:
         txn_size = balances[node_i]*share

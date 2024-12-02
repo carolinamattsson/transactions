@@ -33,6 +33,22 @@ def paired_samples(N,
     # return the vectors
     return unifs['act'], unifs['att']
 
+def powlaw_ppf(a, xmin=1, xmax=np.inf):
+    if a <= 1:
+        raise ValueError("Parameter 'a' must be greater than 1 for a valid power-law distribution.")
+
+    # Precompute terms to use in the PPF calculation
+    b = 1 - a
+    c = (xmax**b - xmin**b) if xmax < np.inf else -xmin**b
+
+    # Define the PPF as a function of the quantile r
+    def ppf(r):
+        if np.any((r < 0) | (r > 1)):
+            raise ValueError("Input 'r' must be between 0 and 1.")
+        return (r * c + xmin**b)**(1 / b)
+
+    return ppf
+
 def scale_pareto(unif, beta=2.0):
     '''
     Generate a vector size N with pareto distributed values
