@@ -103,23 +103,21 @@ def select(attractivities,rng=np.random.default_rng()):
     node_j = rng.choice(list(attractivities.keys()), p=list(attractivities.values()))
     return node_j
 
-def pay_random_share(node_i, node_j, balances, params=None, rng=np.random.default_rng()):
+def pay_random_share(node_i, node_j, balances, p, s, rng=np.random.default_rng()):
     '''
     Pay the selected node a random share of the available balance:
         - If the balance is continuous, the transaction size is a Beta sampled fraction.
         - If the balance is discrete, the transaction size is a Beta Binomial sample.    
 
-    TODO: This function is not currently accessible in the model.
-    TODO: This would require initializing the params (beta_a, beta_b) instead of p.
-            BetaBinom(n,a,b) = BetaBinom(n,ps,(1-p)s)
+    TODO: Testing correct functioning
     '''
-    if params is None:
-        params = {"p": 0.5, "s": 1.0}
-    # print(f"pay_random_share called with {node_i}, {node_j}, params={params}")
-    # sample transaction weight
-    # beta_a, beta_b = params
-    p = params.get('p', 0.5)
-    s = params.get('s', 1.0)
+    # if params is None:
+    #     params = {"p": 0.5, "s": 1.0}
+    # # print(f"pay_random_share called with {node_i}, {node_j}, params={params}")
+    # # sample transaction weight
+    # # beta_a, beta_b = params
+    # p = params.get('p', 0.5)
+    # s = params.get('s', 1.0)
     beta_a, beta_b = p * s, (1 - p) * s
     if isinstance(balances[node_i],Decimal):
         exp = balances[node_i].as_tuple().exponent # -(number of decimal places)
@@ -179,8 +177,9 @@ def transact(nodes,activations,attractivities,balances,method="share",**kwargs):
     node_j = select(attractivities)
     # pay the target node
     if method=="random_share":
-        params = kwargs.get("pay_params", get_default_params(method))
-        amount = pay_random_share(node_i, node_j, balances, params)
+        p = nodes[node_i]["pay"]
+        s = kwargs.get("s", 1.0)  # Default to 1.0 if not provided
+        amount = pay_random_share(node_i, node_j, balances, p, s)
     else:
         amount = pay_share(node_i, node_j, nodes[node_i]["spr"], balances)
     # update the next activation time for the node
