@@ -7,7 +7,7 @@ import heapq as hq
 from decimal import Decimal
 from scipy.stats import betabinom
 
-from dists import paired_samples, random_unifs, scale_pareto, scale_pwl
+from methods.dists import paired_samples, random_unifs, scale_pareto, scale_pwl
 
 # #! start
 # # * old
