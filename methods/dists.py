@@ -10,28 +10,51 @@ from scipy import stats
 
 import pycop.simulation as cop
 
-def paired_samples(N, 
-                   same=False, 
-                   params={'copula':None},
-                   rng=np.random.default_rng()):
+np.random.seed(42)
+rng = np.random.default_rng(seed=42)
+
+def paired_samples(N, same=False, params={'copula': None}):
     '''
-    Initialize activity and fitness values for N nodes, according to the specified distributions.
-    By default, the values are independently sampled.
-        Specify a copula and its parameters to sample correlated values from the respective distributions (see dists.py).
-        Or, specify same_sample=True to use the same sample for both distributions.
-    The parameters for the distributions are given as dictionaries.
-        The options are 'pareto' or 'pwl' or 'uniform' or 'constant', with their relevant parameters.
+    Generate correlated or independent uniform samples using copula or identity.
     '''
-    # create activity and attractivity distributions, together or separately
     unifs = {}
     if same or ('theta' in params and np.isinf(params['theta'])):
-        unifs['act'] = rng.random(N)
+        unifs['act'] = np.random.random(N)
         unifs['att'] = unifs['act']
     else:
-        # unless a copula and its parameters are specified, the sampled distributions are independent
         unifs['act'], unifs['att'] = random_unifs(N, **params)
-    # return the vectors
     return unifs['act'], unifs['att']
+
+#* This version uses rng. It should be the standard, unfortunately pycop do not support it. Hence we use np.random, but we keep it this version here in case someday it will be fixed
+# def paired_samples(
+#     N, 
+#     same=False, 
+#     params={'copula': None}, 
+#     rng=None  # ← NEW: allow external RNG
+# ):
+#     '''
+#     Initialize activity and fitness values for N nodes, according to the specified distributions.
+#     By default, the values are independently sampled.
+#         Specify a copula and its parameters to sample correlated values from the respective distributions (see dists.py).
+#         Or, specify same_sample=True to use the same sample for both distributions.
+#     The parameters for the distributions are given as dictionaries.
+#         The options are 'pareto' or 'pwl' or 'uniform' or 'constant', with their relevant parameters.
+#     '''
+#     if rng is None:
+#         rng = np.random.default_rng()  # ← NEW: fallback to default RNG if none provided
+
+#     unifs = {}
+
+#     if same or ('theta' in params and np.isinf(params['theta'])):
+#         unifs['act'] = rng.random(N)  # ← uses passed or fallback RNG
+#         unifs['att'] = unifs['act']
+#     else:
+#         # ← MODIFIED: pass rng explicitly to random_unifs
+#         unifs['act'], unifs['att'] = random_unifs(N, **params, rng=rng)
+
+#     return unifs['act'], unifs['att']
+
+
 
 def powlaw_ppf(a, xmin=1, xmax=np.inf):
     if a <= 1:
@@ -74,27 +97,61 @@ def scale_pwl(unif, beta=1.0, loc=0, scale=1):
     # now return
     return pwl
 
-def random_unifs(N, copula=None, reversed=False, theta=0, resample=100, rng=np.random.default_rng()):
+def random_unifs(N, copula=None, reversed=False, theta=0, resample=100):
     '''
-    Generate two vectors size N with uniform distributed values coupled by the given copula
-    Resample from the copula up to 'resample' numbers of times so there are no 1s in the reversed vector
-    # nice one is reversed 'clayton' with theta=5
+    Generate two vectors size N with uniform distributed values coupled by the given copula.
+    Resample from the copula up to 'resample' times to avoid 0s or 1s in the output.
     '''
     if copula is not None and theta != 0:
         sample = 0
-        while sample < resample: 
+        while sample < resample:
             unif_1, unif_2 = cop.simu_archimedean(copula, 2, N, theta=theta)
-            if not np.any(unif_1==0) and not np.any(unif_2==0):
+            if not np.any(unif_1 == 0) and not np.any(unif_2 == 0):
                 break
-        if sample==resample:
+            sample += 1
+        if sample == resample:
             raise ValueError("Theta is too high, there are sampling issues. Use perturbation instead.")
-        # now return them both
-        if reversed:
-            return np.subtract(1,unif_1), np.subtract(1,unif_2)  # <-- flipped
-        else:
-            return unif_1, unif_2
+        return (1 - unif_1, 1 - unif_2) if reversed else (unif_1, unif_2)
     else:
-        return rng.random(N), rng.random(N)
+        return np.random.random(N), np.random.random(N)
+
+
+#* This version uses rng. It should be the standard, unfortunately pycop do not support it. Hence we use np.random, but we keep it this version here in case someday it will be fixed
+# def random_unifs(
+#     N, 
+#     copula=None, 
+#     reversed=False, 
+#     theta=0, 
+#     resample=100, 
+#     rng=None  # ← NEW: allow external RNG
+# ):
+#     '''
+#     Generate two vectors size N with uniform distributed values coupled by the given copula.
+#     Resample from the copula up to 'resample' numbers of times so there are no 1s in the reversed vector.
+#     # nice one is reversed 'clayton' with theta=5
+#     '''
+#     if rng is None:
+#         rng = np.random.default_rng()  # ← NEW: fallback to default RNG if none provided
+
+#     if copula is not None and theta != 0:
+#         sample = 0
+#         while sample < resample: 
+#             unif_1, unif_2 = cop.simu_archimedean(copula, 2, N, theta=theta)
+#             if not np.any(unif_1 == 0) and not np.any(unif_2 == 0):
+#                 break
+#             # sample += 1  # ← Uncomment this line if infinite loop occurs during sampling
+
+#         if sample == resample:
+#             raise ValueError("Theta is too high, there are sampling issues. Use perturbation instead.")
+
+#         if reversed:
+#             return np.subtract(1, unif_1), np.subtract(1, unif_2)
+#         else:
+#             return unif_1, unif_2
+
+#     else:
+#         return rng.random(N), rng.random(N)  # ← uses passed or fallback RNG
+
 
 def random_pwls_perturb(N, pwl_beta=1.0, pwl_loc=0, pwl_scale=1, per_beta=1, per_std=0):
     '''

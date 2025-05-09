@@ -7,6 +7,9 @@ import random
 import numpy as np
 from scipy import stats
 
+np.random.seed(42)
+rng = np.random.default_rng(seed=42)
+
 def distr_bin(data, n_bin=30, logbin=True, namefile=''):
     ###This is a very old function copied from my c++ library. It's ugly but works :)
     """ Logarithmic binning of raw positive data;

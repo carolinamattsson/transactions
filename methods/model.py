@@ -9,6 +9,9 @@ from scipy.stats import betabinom
 
 from methods.dists import paired_samples, random_unifs, scale_pareto, scale_pwl
 
+# np.random.seed(42)
+# rng = np.random.default_rng(seed=42)
+
 # #! start
 # # * old
 # def create_nodes(N, activity=1, attractivity=1, spending=0.5, burstiness=1, mean_iet=1):
@@ -116,7 +119,7 @@ def create_nodes(N, activity=1, attractivity=1, spending=0.5, burstiness=1, mean
     return nodes, transition_matrix
 
 
-np.random.seed(321)
+# np.random.seed(321)
 
 
 # #* new create nodes with text node labels

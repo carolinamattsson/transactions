@@ -24,6 +24,10 @@ sys.path.extend([
 import methods.model as model
 import methods.dists as dists
 
+np.random.seed(42)
+rng = np.random.default_rng(seed=42)
+
+
 # Convert metadata to JSON-serializable format
 def convert_metadata_to_serializable(metadata):
     return {
@@ -40,7 +44,37 @@ def create_parameter_grid(params):
     return combinations
 
 # Generate activity and attractivity samples
+# def generate_activity_attractivity(
+#     N, 
+#     copula_type, 
+#     copula_param, 
+#     reversed_copula, 
+#     activity_generator, 
+#     attractivity_generator, 
+#     rng=None  # ← NEW: allow external RNG for reproducibility
+# ):
+#     if rng is None:
+#         rng = np.random.default_rng()  # ← NEW: fallback RNG if none provided
+
+#     # ← CHANGED: now we pass rng explicitly to paired_samples
+#     unif_act, unif_att = dists.paired_samples(
+#         N,
+#         params={
+#             'copula': copula_type,
+#             'theta': copula_param,
+#             'reversed': reversed_copula
+#         },
+#         rng=rng  # ← NEW: ensures reproducibility
+#     )
+
+#     vect_act = activity_generator(unif_act)
+#     vect_att = attractivity_generator(unif_att)
+#     return vect_act, vect_att
+
 def generate_activity_attractivity(N, copula_type, copula_param, reversed_copula, activity_generator, attractivity_generator):
+    '''
+    Sample uniform correlated values via paired_samples, then transform via PPFs.
+    '''
     unif_act, unif_att = dists.paired_samples(
         N,
         params={
@@ -53,90 +87,16 @@ def generate_activity_attractivity(N, copula_type, copula_param, reversed_copula
     vect_att = attractivity_generator(unif_att)
     return vect_act, vect_att
 
-# Run a single simulation
-# def run_simulation(params):
-#     start_time = time.time()
 
-#     # Extract parameters
-#     s = params["s"]
-#     spending_rate = params["spending_rate"]
-#     initial_bal = params["initial_bal"]
-#     decimals = params["decimals"]
-#     N = params["N"]
-#     T = params["T"]
-#     D = params["D"]
-#     SIZE_SCALE = params["SIZE_SCALE"]
-#     LENGTH_SCALE = params["LENGTH_SCALE"]
-#     MEAN_IET = params["MEAN_IET"]
-#     burstiness = params["burstiness"]
-    
-#     # Extract copula type and parameter
-#     copula_type, copula_param, reversed_copula = params["copula"]
 
-#     # Extract activity and attractivity distributions
-#     activity_type, activity_params, activity_generator = params["activity_distribution"]
-#     attractivity_type, attractivity_params, attractivity_generator = params["attractivity_distribution"]
-
-#     # Generate activity and attractivity vectors dynamically
-#     vect_act, vect_att = generate_activity_attractivity(
-#         N=N,
-#         copula_type=copula_type,
-#         copula_param=copula_param,
-#         reversed_copula=reversed_copula,
-#         activity_generator=activity_generator,
-#         attractivity_generator=attractivity_generator
-#     )
-
-#     # Initialize the model
-#     nodes = model.create_nodes(N, activity=vect_act, attractivity=vect_att, spending=spending_rate, mean_iet=MEAN_IET, burstiness=burstiness)
-#     acts = model.initialize_activations(nodes)
-#     atts = model.initialize_attractivities(nodes)
-#     initial_bal = model.initialize_balances(nodes, balances=initial_bal, decimals=decimals)
-
-#     # Perform transactions
-#     transactions = []
-#     for t in range(T):
-#         transaction = model.transact(nodes, acts, atts, initial_bal, method='random_share', s=s)
-#         transactions.append(transaction)
-
-#     # Create a DataFrame for transactions
-#     header = ["timestamp", "source", "target", "amount", "source_bal", "target_bal"]
-#     transactions_df = pd.DataFrame(transactions, columns=header)
-#     # transactions_df['s'] = s
-#     # transactions['burstiness'] = burstiness
-
-#     # Metadata
-#     metadata = {
-#         'sprate': params["spending_rate_name"],
-#         'inbal': params["initial_bal_name"],
-#         'activity_type': activity_type,
-#         'activity_params': activity_params,
-#         'attractivity_type': attractivity_type,
-#         'attractivity_params': attractivity_params,
-#         'N': N,
-#         'T': T,
-#         'D': D,
-#         's': s,
-#         'decimals': decimals,
-#         'SIZE_SCALE': SIZE_SCALE,
-#         'LENGTH_SCALE': LENGTH_SCALE,
-#         'MEAN_IET': MEAN_IET,
-#         'burstiness': burstiness,
-#         'copula_type': copula_type,
-#         'copula_param': copula_param
-#     }
-
-#     execution_time = time.time() - start_time
-#     return transactions_df, metadata, execution_time
-
-def run_simulation(params, saved=None):
-
+def run_simulation(params, saved=None, rng=None):  # ← NEW: accepts external RNG
     start_time = time.time()
 
-    # Extract parameters
+    if rng is None:
+        rng = np.random.default_rng(seed=42)  # ← NEW: fallback seed for reproducibility
+
+    # Extract simulation parameters
     s = params["s"]
-    # spending_rate = params["spending_rate"]
-    # initial_bal = params["initial_bal"]
     decimals = params["decimals"]
     N = params["N"]
     T = params["T"]
@@ -146,73 +106,71 @@ def run_simulation(params, saved=None):
     MEAN_IET = params["MEAN_IET"]
     burstiness = params["burstiness"]
 
+    # Extract all random-dependent generators
     sprate_type, sprate_params, sprate_generator = params["spending_rate"]
-    inbal_type, inbal_params,inbal_generator = params["initial_balance"]
-    
-    # Extract copula type and parameter
+    inbal_type, inbal_params, inbal_generator = params["initial_balance"]
     copula_type, copula_param, reversed_copula = params["copula"]
-
-    # Extract activity and attractivity distributions
     activity_type, activity_params, activity_generator = params["activity_distribution"]
     attractivity_type, attractivity_params, attractivity_generator = params["attractivity_distribution"]
 
-
-
-    # Generate activity and attractivity vectors dynamically
+    # Generate activity and attractivity vectors
     vect_act, vect_att = generate_activity_attractivity(
         N=N,
         copula_type=copula_type,
         copula_param=copula_param,
         reversed_copula=reversed_copula,
         activity_generator=activity_generator,
-        attractivity_generator=attractivity_generator
+        attractivity_generator=attractivity_generator,
+        # rng=rng  # ← NEW: ensure reproducibility of copula sampling,#* for the future
     )
 
-    spending_rate = sprate_generator(N)
-    initial_bal = inbal_generator(N)
+    # Generate spending rate and initial balance vectors
+    spending_rate = sprate_generator(N, rng=rng)   # ← NEW: pass rng to lambda
+    initial_bal = inbal_generator(N, rng=rng)      # ← NEW: pass rng to lambda
 
-    # Initialize the model
-    nodes, transition_matrix = model.create_nodes(N, activity=vect_act, attractivity=vect_att, spending=spending_rate, mean_iet=MEAN_IET, burstiness=burstiness)
-    # nodes, transition_matrix = model.create_nodes(N, activity=vect_act, attractivity=vect_att, spending=sprate_generator, mean_iet=MEAN_IET, burstiness=burstiness)
+    # Initialize model
+    nodes, transition_matrix = model.create_nodes(
+        N,
+        activity=vect_act,
+        attractivity=vect_att,
+        spending=spending_rate,
+        mean_iet=MEAN_IET,
+        burstiness=burstiness
+    )
     acts = model.initialize_activations(nodes)
-    # atts = model.initialize_attractivities(nodes)
     balances = model.initialize_balances(nodes, balances=initial_bal, decimals=decimals)
 
-    # Prepare to write transactions
-    header = ["timestamp", "source", "target", "amount", "source_bal", "target_bal"]
-    # transactions_df = pd.DataFrame(columns=header)
-
-    # # Perform transactions
-    # for t in range(T):
-    #     transaction = model.transact(nodes, acts, transition_matrix, balances, method='random_share', s=s)
-
-    #     # Write transactions only after the burn-in period
-    #     if t >= burn_in_period:
-    #         transaction_row = pd.DataFrame([transaction], columns=header)
-    #         transactions_df = pd.concat([transactions_df, transaction_row], ignore_index=True)
-
+    # Prepare for transaction recording
     if saved is None:
-        saved = params['T']
-    transactions_list = [None] * saved
+        saved = T
     burn_in_period = T - saved
+    transactions_list = [None] * saved
+    header = ["timestamp", "source", "target", "amount", "source_bal", "target_bal"]
 
-    # Run the model
+    # Run transaction loop
     for i in range(T):
-        transaction = model.transact(nodes, acts, transition_matrix, balances,method='random_share',s=s)
-        # while i
+        transaction = model.transact(
+            nodes, 
+            acts, 
+            transition_matrix, 
+            balances,
+            method='random_share',
+            s=s
+        )
         if i >= burn_in_period:
-            transactions_list[T-i-1] =[transaction[term] for term in header]
+            index = i - burn_in_period  # ← NEW: fill forward, from 0 to saved-1
+            transactions_list[index] = [transaction[term] for term in header]
 
-    # Convert to DataFrame
+    # Convert results to DataFrames
     transactions_df = pd.DataFrame(transactions_list, columns=header)
-    nodes_df = pd.DataFrame.from_dict(nodes, orient='index').reset_index()
+    nodes_df = pd.DataFrame.from_dict(nodes, orient='index')
+    nodes_df = nodes_df.sort_index().reset_index()  # ← force deterministic row order
 
-    # Metadata
+
+    # Build metadata dictionary
     metadata = {
-        # 'sprate': params["spending_rate_name"],
         'sprate_type': sprate_type,
-        'sprate_params':sprate_params,
-        # 'inbal': params["initial_bal_name"],
+        'sprate_params': sprate_params,
         'inbal_type': inbal_type,
         'inbal_params': inbal_params,
         'activity_type': activity_type,
@@ -234,6 +192,7 @@ def run_simulation(params, saved=None):
 
     execution_time = time.time() - start_time
     return transactions_df, metadata, execution_time, nodes_df
+
 
 # Print memory usage
 def print_memory_usage(label):
