@@ -431,9 +431,9 @@ if __name__ == "__main__":
         exit()
     # Ensure output directory exists
     if test == 'y':
-        output_dir = "/home/ccellerini/adtxns/files/final/009/test"
+        output_dir = "/home/ccellerini/adtxns/files/new_version/000/test"
     else:
-        output_dir = "/home/ccellerini/adtxns/files/final/009"
+        output_dir = "/home/ccellerini/adtxns/files/new_version/000"
         print(output_dir)
         input('continue?')
     # output_dir = 'simulations/adtxns/test/00_abc'
