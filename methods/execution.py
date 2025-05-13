@@ -1,0 +1,355 @@
+import os
+import sys
+import json
+import time
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+from itertools import product
+from scipy.stats import uniform
+import psutil
+import matplotlib.pyplot as plt
+import gc
+
+# Add directories to Python path
+projdir = os.path.abspath(os.getcwd())
+sys.path.insert(0, projdir)
+sys.path.extend([
+    
+    os.path.abspath('/home/ccellerini/adtxns/modular_model/transactions/methods'),
+    os.path.abspath('/home/ccellerini/adtxns/modular_model/transactions'),
+    os.path.abspath('/home/ccellerini/adtxns/modular_model'),
+])
+
+import methods.model as model
+import methods.dists as dists
+
+# Convert metadata to JSON-serializable format
+def convert_metadata_to_serializable(metadata):
+    return {
+        key: (int(value) if isinstance(value, np.integer) else
+              float(value) if isinstance(value, np.floating) else
+              value)
+        for key, value in metadata.items()
+    }
+
+# Generate parameter grid
+def create_parameter_grid(params):
+    keys, values = zip(*params.items())
+    combinations = [dict(zip(keys, combination)) for combination in product(*values)]
+    return combinations
+
+# Generate activity and attractivity samples
+def generate_activity_attractivity(N, copula_type, copula_param, reversed_copula, activity_generator, attractivity_generator):
+    unif_act, unif_att = dists.paired_samples(
+        N,
+        params={
+            'copula': copula_type,
+            'theta': copula_param,
+            'reversed': reversed_copula
+        }
+    )
+    vect_act = activity_generator(unif_act)
+    vect_att = attractivity_generator(unif_att)
+    return vect_act, vect_att
+
+# Run a single simulation
+# def run_simulation(params):
+#     start_time = time.time()
+
+#     # Extract parameters
+#     s = params["s"]
+#     spending_rate = params["spending_rate"]
+#     initial_bal = params["initial_bal"]
+#     decimals = params["decimals"]
+#     N = params["N"]
+#     T = params["T"]
+#     D = params["D"]
+#     SIZE_SCALE = params["SIZE_SCALE"]
+#     LENGTH_SCALE = params["LENGTH_SCALE"]
+#     MEAN_IET = params["MEAN_IET"]
+#     burstiness = params["burstiness"]
+    
+#     # Extract copula type and parameter
+#     copula_type, copula_param, reversed_copula = params["copula"]
+
+#     # Extract activity and attractivity distributions
+#     activity_type, activity_params, activity_generator = params["activity_distribution"]
+#     attractivity_type, attractivity_params, attractivity_generator = params["attractivity_distribution"]
+
+#     # Generate activity and attractivity vectors dynamically
+#     vect_act, vect_att = generate_activity_attractivity(
+#         N=N,
+#         copula_type=copula_type,
+#         copula_param=copula_param,
+#         reversed_copula=reversed_copula,
+#         activity_generator=activity_generator,
+#         attractivity_generator=attractivity_generator
+#     )
+
+#     # Initialize the model
+#     nodes = model.create_nodes(N, activity=vect_act, attractivity=vect_att, spending=spending_rate, mean_iet=MEAN_IET, burstiness=burstiness)
+#     acts = model.initialize_activations(nodes)
+#     atts = model.initialize_attractivities(nodes)
+#     initial_bal = model.initialize_balances(nodes, balances=initial_bal, decimals=decimals)
+
+#     # Perform transactions
+#     transactions = []
+#     for t in range(T):
+#         transaction = model.transact(nodes, acts, atts, initial_bal, method='random_share', s=s)
+#         transactions.append(transaction)
+
+#     # Create a DataFrame for transactions
+#     header = ["timestamp", "source", "target", "amount", "source_bal", "target_bal"]
+#     transactions_df = pd.DataFrame(transactions, columns=header)
+#     # transactions_df['s'] = s
+#     # transactions['burstiness'] = burstiness
+
+#     # Metadata
+#     metadata = {
+#         'sprate': params["spending_rate_name"],
+#         'inbal': params["initial_bal_name"],
+#         'activity_type': activity_type,
+#         'activity_params': activity_params,
+#         'attractivity_type': attractivity_type,
+#         'attractivity_params': attractivity_params,
+#         'N': N,
+#         'T': T,
+#         'D': D,
+#         's': s,
+#         'decimals': decimals,
+#         'SIZE_SCALE': SIZE_SCALE,
+#         'LENGTH_SCALE': LENGTH_SCALE,
+#         'MEAN_IET': MEAN_IET,
+#         'burstiness': burstiness,
+#         'copula_type': copula_type,
+#         'copula_param': copula_param
+#     }
+
+#     execution_time = time.time() - start_time
+#     return transactions_df, metadata, execution_time
+
+def run_simulation(params, saved=None):
+
+    start_time = time.time()
+
+    # Extract parameters
+    s = params["s"]
+    # spending_rate = params["spending_rate"]
+    # initial_bal = params["initial_bal"]
+    decimals = params["decimals"]
+    N = params["N"]
+    T = params["T"]
+    D = params["D"]
+    SIZE_SCALE = params["SIZE_SCALE"]
+    LENGTH_SCALE = params["LENGTH_SCALE"]
+    MEAN_IET = params["MEAN_IET"]
+    burstiness = params["burstiness"]
+
+    sprate_type, sprate_params, sprate_generator = params["spending_rate"]
+    inbal_type, inbal_params,inbal_generator = params["initial_balance"]
+    
+    # Extract copula type and parameter
+    copula_type, copula_param, reversed_copula = params["copula"]
+
+    # Extract activity and attractivity distributions
+    activity_type, activity_params, activity_generator = params["activity_distribution"]
+    attractivity_type, attractivity_params, attractivity_generator = params["attractivity_distribution"]
+
+
+
+    # Generate activity and attractivity vectors dynamically
+    vect_act, vect_att = generate_activity_attractivity(
+        N=N,
+        copula_type=copula_type,
+        copula_param=copula_param,
+        reversed_copula=reversed_copula,
+        activity_generator=activity_generator,
+        attractivity_generator=attractivity_generator
+    )
+
+    spending_rate = sprate_generator(N)
+    initial_bal = inbal_generator(N)
+
+    # Initialize the model
+    nodes, transition_matrix = model.create_nodes(N, activity=vect_act, attractivity=vect_att, spending=spending_rate, mean_iet=MEAN_IET, burstiness=burstiness)
+    # nodes, transition_matrix = model.create_nodes(N, activity=vect_act, attractivity=vect_att, spending=sprate_generator, mean_iet=MEAN_IET, burstiness=burstiness)
+    acts = model.initialize_activations(nodes)
+    # atts = model.initialize_attractivities(nodes)
+    balances = model.initialize_balances(nodes, balances=initial_bal, decimals=decimals)
+
+    # Prepare to write transactions
+    header = ["timestamp", "source", "target", "amount", "source_bal", "target_bal"]
+    # transactions_df = pd.DataFrame(columns=header)
+
+    # # Perform transactions
+    # for t in range(T):
+    #     transaction = model.transact(nodes, acts, transition_matrix, balances, method='random_share', s=s)
+
+    #     # Write transactions only after the burn-in period
+    #     if t >= burn_in_period:
+    #         transaction_row = pd.DataFrame([transaction], columns=header)
+    #         transactions_df = pd.concat([transactions_df, transaction_row], ignore_index=True)
+
+    if saved is None:
+        saved = params['T']
+    transactions_list = [None] * saved
+    burn_in_period = T - saved
+
+    # Run the model
+    for i in range(T):
+        transaction = model.transact(nodes, acts, transition_matrix, balances,method='random_share',s=s)
+        # while i
+        if i >= burn_in_period:
+            transactions_list[T-i-1] =[transaction[term] for term in header]
+
+    # Convert to DataFrame
+    transactions_df = pd.DataFrame(transactions_list, columns=header)
+    nodes_df = pd.DataFrame.from_dict(nodes, orient='index').reset_index()
+
+    # Metadata
+    metadata = {
+        # 'sprate': params["spending_rate_name"],
+        'sprate_type': sprate_type,
+        'sprate_params':sprate_params,
+        # 'inbal': params["initial_bal_name"],
+        'inbal_type': inbal_type,
+        'inbal_params': inbal_params,
+        'activity_type': activity_type,
+        'activity_params': activity_params,
+        'attractivity_type': attractivity_type,
+        'attractivity_params': attractivity_params,
+        'N': N,
+        'T': T,
+        'D': D,
+        's': s,
+        'decimals': decimals,
+        'SIZE_SCALE': SIZE_SCALE,
+        'LENGTH_SCALE': LENGTH_SCALE,
+        'MEAN_IET': MEAN_IET,
+        'burstiness': burstiness,
+        'copula_type': copula_type,
+        'copula_param': copula_param
+    }
+
+    execution_time = time.time() - start_time
+    return transactions_df, metadata, execution_time, nodes_df
+
+# Print memory usage
+def print_memory_usage(label):
+    """
+    Logs memory usage for debugging.
+
+    Parameters
+    ----------
+    label : str
+        Label to prepend to the memory usage message.
+
+    Returns
+    -------
+    memory_info.rss : int
+        Memory usage in bytes (Resident Set Size).
+
+    Notes
+    -----
+    This function is useful for tracking memory usage in scripts, e.g. during long simulations.
+    """
+    process = psutil.Process(os.getpid())
+    memory_info = process.memory_info()
+    print(f"{label}: {memory_info.rss / (1024 ** 2):.2f} MB (Resident Set Size)")
+    return memory_info.rss
+
+# Clear memory
+def clear_memory():
+    """
+    Triggers garbage collection to free up unused memory and prints a confirmation message.
+    """
+
+    gc.collect()
+    print("Memory cleared.")
+
+# Run batch simulations
+def batch_runner(params_grid,saved=None,output_dir=None):
+
+    if output_dir is None:
+        print('Please create the output dir')
+        output_dir = '/home/ccellerini/adtxns/files/you_forgot_to_set_output_dir'
+
+    
+    loop_start = time.time()
+    memory = []
+    metadata_file = os.path.join(output_dir, "metadata_summary.json")
+    metadata_summary = []
+
+    for idx, params in enumerate(tqdm(params_grid, desc="Batch Simulations")):
+        try:
+            if saved is None:
+                saved = params['T']
+            # Unique identifier for simulation
+            # simulation_id = f"sim_{idx}_{int(time.time())}"
+            simulation_id = f'{idx}'
+            time_id = f'{int(time.time())}'
+
+            # Run simulation
+            transactions_df, metadata, execution_time, nodes_df = run_simulation(params, saved=saved)
+
+            # Add simulation ID to metadata
+            metadata["simulation_id"] = simulation_id
+
+            # Save transactions
+            transaction_file = os.path.join(output_dir, f"{simulation_id}.parquet")
+            transactions_df.to_parquet(transaction_file, index=False)
+
+            nodes_file = os.path.join(output_dir,f'nodes_{simulation_id}.csv')
+            nodes_df.to_csv(nodes_file,index=False)
+
+            # Save metadata for this simulation
+            metadata_file_path = os.path.join(output_dir, f"{simulation_id}_metadata.json")
+            with open(metadata_file_path, 'w') as f:
+                json.dump(convert_metadata_to_serializable(metadata), f, indent=4)
+
+            # Track metadata summary
+            metadata_summary.append({
+                "simulation_id": simulation_id,
+                "transaction_file": transaction_file,
+                "metadata_file": metadata_file_path,
+                "time id": time_id,
+                "execution_time": execution_time,
+            })
+
+            print(f"Completed simulation: {params}")
+            print(f"Execution time: {execution_time:.2f} seconds")
+            memory.append(print_memory_usage(f"End of {simulation_id}"))
+
+            # Clear memory after each loop
+            clear_memory()
+
+        except Exception as e:
+            print(f"Error in simulation {idx}: {e}")
+            continue
+
+    # Save metadata summary
+    with open(metadata_file, 'w') as f:
+        json.dump(metadata_summary, f, indent=4)
+
+    # Plot memory usage
+    plt.figure()
+    plt.plot(memory, marker='o', label='Memory Usage (MB)')
+    plt.xlabel('Simulation Index')
+    plt.ylabel('Memory Usage (MB)')
+    plt.title('Memory Usage Over Simulations')
+    plt.legend()
+    plt.grid()
+    plt.show()
+    plt.savefig(os.path.join(output_dir, "memory_usage_plot.png"))
+
+    print("All simulations completed.")
+    print(f"Total execution time: {time.time() - loop_start:.2f} seconds")
+
+
+
+
+
+# Main execution
+# s low values + burstiness 
+

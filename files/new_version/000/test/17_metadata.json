@@ -1,0 +1,35 @@
+{
+    "sprate_type": "uniform",
+    "sprate_params": [
+        0,
+        1
+    ],
+    "inbal_type": "constant",
+    "inbal_params": [
+        1000
+    ],
+    "activity_type": "powlaw",
+    "activity_params": [
+        1.85,
+        1,
+        1838
+    ],
+    "attractivity_type": "powlaw",
+    "attractivity_params": [
+        1.87,
+        1,
+        2118
+    ],
+    "N": 500,
+    "T": 50,
+    "D": 0.0686399665586083,
+    "s": 5,
+    "decimals": 3,
+    "SIZE_SCALE": 1,
+    "LENGTH_SCALE": 6,
+    "MEAN_IET": 43706315,
+    "burstiness": 0.75,
+    "copula_type": "joe",
+    "copula_param": 3.15,
+    "simulation_id": "17"
+}
