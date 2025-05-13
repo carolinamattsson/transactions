@@ -130,13 +130,31 @@ def generate_activity_attractivity(N, copula_type, copula_param, reversed_copula
 #     return transactions_df, metadata, execution_time
 
 def run_simulation(params, saved=None):
+    """
+    Run a single simulation.
 
+    Parameters
+    ----------
+    params : dict
+        Dictionary containing all necessary parameters for the simulation.
+    saved : int, optional
+        Number of transactions to save after the burn-in period. Defaults to the total number of transactions.
+
+    Returns
+    -------
+    transactions_df : pd.DataFrame
+        DataFrame containing the saved transactions.
+    metadata : dict
+        Dictionary containing metadata about the simulation.
+    execution_time : float
+        Total execution time of the simulation.
+    nodes_df : pd.DataFrame
+        DataFrame containing node parameters.
+    """
     start_time = time.time()
 
     # Extract parameters
     s = params["s"]
-    # spending_rate = params["spending_rate"]
-    # initial_bal = params["initial_bal"]
     decimals = params["decimals"]
     N = params["N"]
     T = params["T"]
@@ -146,19 +164,14 @@ def run_simulation(params, saved=None):
     MEAN_IET = params["MEAN_IET"]
     burstiness = params["burstiness"]
 
+    # Extract distributions and generators
     sprate_type, sprate_params, sprate_generator = params["spending_rate"]
-    inbal_type, inbal_params,inbal_generator = params["initial_balance"]
-    
-    # Extract copula type and parameter
+    inbal_type, inbal_params, inbal_generator = params["initial_balance"]
     copula_type, copula_param, reversed_copula = params["copula"]
-
-    # Extract activity and attractivity distributions
     activity_type, activity_params, activity_generator = params["activity_distribution"]
     attractivity_type, attractivity_params, attractivity_generator = params["attractivity_distribution"]
 
-
-
-    # Generate activity and attractivity vectors dynamically
+    # Generate activity and attractivity vectors
     vect_act, vect_att = generate_activity_attractivity(
         N=N,
         copula_type=copula_type,
@@ -168,29 +181,23 @@ def run_simulation(params, saved=None):
         attractivity_generator=attractivity_generator
     )
 
+    # Generate spending rates and initial balances
     spending_rate = sprate_generator(N)
     initial_bal = inbal_generator(N)
 
     # Initialize the model
-    nodes, transition_matrix = model.create_nodes(N, activity=vect_act, attractivity=vect_att, spending=spending_rate, mean_iet=MEAN_IET, burstiness=burstiness)
-    # nodes, transition_matrix = model.create_nodes(N, activity=vect_act, attractivity=vect_att, spending=sprate_generator, mean_iet=MEAN_IET, burstiness=burstiness)
+    # todo: transition matrix return by its own method
+    nodes, transition_matrix = model.create_nodes(
+        N, activity=vect_act, attractivity=vect_att,
+        spending=spending_rate, mean_iet=MEAN_IET, burstiness=burstiness
+    )
     acts = model.initialize_activations(nodes)
-    # atts = model.initialize_attractivities(nodes)
     balances = model.initialize_balances(nodes, balances=initial_bal, decimals=decimals)
 
     # Prepare to write transactions
     header = ["timestamp", "source", "target", "amount", "source_bal", "target_bal"]
-    # transactions_df = pd.DataFrame(columns=header)
 
-    # # Perform transactions
-    # for t in range(T):
-    #     transaction = model.transact(nodes, acts, transition_matrix, balances, method='random_share', s=s)
-
-    #     # Write transactions only after the burn-in period
-    #     if t >= burn_in_period:
-    #         transaction_row = pd.DataFrame([transaction], columns=header)
-    #         transactions_df = pd.concat([transactions_df, transaction_row], ignore_index=True)
-
+    #todo: move saved to params
     if saved is None:
         saved = params['T']
     transactions_list = [None] * saved
@@ -198,21 +205,18 @@ def run_simulation(params, saved=None):
 
     # Run the model
     for i in range(T):
-        transaction = model.transact(nodes, acts, transition_matrix, balances,method='random_share',s=s)
-        # while i
+        transaction = model.transact(nodes, acts, transition_matrix, balances, method='random_share', s=s)
         if i >= burn_in_period:
-            transactions_list[T-i-1] =[transaction[term] for term in header]
+            transactions_list[i-burn_in_period] = [transaction[term] for term in header]
 
-    # Convert to DataFrame
+    # Convert transactions to DataFrame
     transactions_df = pd.DataFrame(transactions_list, columns=header)
     nodes_df = pd.DataFrame.from_dict(nodes, orient='index').reset_index()
 
-    # Metadata
+    # Compile metadata
     metadata = {
-        # 'sprate': params["spending_rate_name"],
         'sprate_type': sprate_type,
-        'sprate_params':sprate_params,
-        # 'inbal': params["initial_bal_name"],
+        'sprate_params': sprate_params,
         'inbal_type': inbal_type,
         'inbal_params': inbal_params,
         'activity_type': activity_type,
