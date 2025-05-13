@@ -269,28 +269,55 @@ def clear_memory():
     print("Memory cleared.")
 
 # Run batch simulations
-def batch_runner(params_grid,saved=None,output_dir=None):
+def batch_runner(params_grid, saved=None, output_dir=None):
+    """
+    Executes batch simulations using the provided parameter grid.
 
+    Parameters
+    ----------
+    params_grid : list
+        List of parameter sets for each simulation.
+    saved : int, optional
+        Number of transactions to save, defaults to None.
+    output_dir : str, optional
+        Directory for saving simulation outputs, defaults to a warning directory.
+
+    Notes
+    -----
+    This function runs simulations in a batch, saves the transaction and node data,
+    and logs metadata and memory usage.
+    """
+
+    # Check if output directory was specified
     if output_dir is None:
         print('Please create the output dir')
         output_dir = '/home/ccellerini/adtxns/files/you_forgot_to_set_output_dir'
 
-    
+    # Start the timer for the entire loop
     loop_start = time.time()
+
+    # Initialize empty list to track memory usage
     memory = []
+
+    # Define file path for metadata summary
     metadata_file = os.path.join(output_dir, "metadata_summary.json")
+
+    # Initialize empty list to track metadata summary
     metadata_summary = []
 
+    # Iterate over each set of parameters
     for idx, params in enumerate(tqdm(params_grid, desc="Batch Simulations")):
         try:
+            # If the number of transactions to save was not specified,
+            # use the value from the current parameter set
             if saved is None:
                 saved = params['T']
-            # Unique identifier for simulation
-            # simulation_id = f"sim_{idx}_{int(time.time())}"
+
+            # Generate unique identifier for simulation
             simulation_id = f'{idx}'
             time_id = f'{int(time.time())}'
 
-            # Run simulation
+            # Run the simulation
             transactions_df, metadata, execution_time, nodes_df = run_simulation(params, saved=saved)
 
             # Add simulation ID to metadata
@@ -300,8 +327,8 @@ def batch_runner(params_grid,saved=None,output_dir=None):
             transaction_file = os.path.join(output_dir, f"{simulation_id}.parquet")
             transactions_df.to_parquet(transaction_file, index=False)
 
-            nodes_file = os.path.join(output_dir,f'nodes_{simulation_id}.csv')
-            nodes_df.to_csv(nodes_file,index=False)
+            nodes_file = os.path.join(output_dir, f'nodes_{simulation_id}.csv')
+            nodes_df.to_csv(nodes_file, index=False)
 
             # Save metadata for this simulation
             metadata_file_path = os.path.join(output_dir, f"{simulation_id}_metadata.json")
@@ -345,11 +372,4 @@ def batch_runner(params_grid,saved=None,output_dir=None):
 
     print("All simulations completed.")
     print(f"Total execution time: {time.time() - loop_start:.2f} seconds")
-
-
-
-
-
-# Main execution
-# s low values + burstiness 
 
