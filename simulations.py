@@ -4,9 +4,26 @@ import methods.model as model
 import os 
 import sys
 import numpy as np
+import argparse
 
 if __name__ == "__main__":
-    rng = np.random.default_rng(seed=42)
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description="Run a batch of transaction simulations.")
+    parser.add_argument("--test", action="store_true", help="Run in test mode (default: False)")
+    parser.add_argument("--output_dir", type=str, default="output/", help="Output directory for results")
+    parser.add_argument("--seed", type=int, default=None, help="Specify a random seed")
+
+    # Parse arguments
+    args = parser.parse_args()
+    test = args.test
+    output_dir = args.output_dir
+    seed = args.seed #  from the given one
+
+    # Initialize random number generator
+    rng = np.random.default_rng(seed=seed)
+    # If you want the seed to work, probably you need to create these generators inside run_simulation
+    # My suggestion is to pass this original seed into the parameter grid and make one per simulation
+
     # Constants as parameters
     SIZE_SCALE = 1
     LENGTH_SCALE = 6
@@ -17,19 +34,17 @@ if __name__ == "__main__":
     D = T / MEAN_IET #useless
     saved = 500_000
 
-    # test = 'y'
-    test = input('Is this a test ? (y/n)')
-
-    if test == 'y':
+    if test:
+        output_dir = output_dir + "test/"
         N = 500
         T = 50
         saved = 20
+
     print(f"Iteration : {T:_}")
-    print(f"save : {saved:_}")
+    print(f"Save : {saved:_}")
+    print(f"Random seed: {seed}")
+
     # Define spending rates
-
-
-# Define spending rates
     spending_rate_list = [
         ("uniform", [0, 1], lambda N: rng.uniform(1e-16, 1, N)), #*('name',[parameters], actual distribution as lambda of N)
         # ("beta", [0.4,0.6], lambda N: rng.beta(0.4,0.6,N))
@@ -54,7 +69,6 @@ if __name__ == "__main__":
 
     ]
 
-
     attractivity_distributions = [
         ("powlaw", [1.87, 1, 2118], lambda unif: dists.powlaw_ppf(1.87, 1, 2118)(unif)),
         # ('uniform',[0,1], lambda unif: unif),
@@ -67,9 +81,8 @@ if __name__ == "__main__":
         # ('joe', 1, False),
     ]
 
-
-
     parameter_dict = {
+        # "seed": seed,
         # "s": [2,5000],#np.logspace(0, 3, 6).astype(int),#[1],
         # "s": [2*N],
         # "s": [0.1,2,5,20,100,2000,10000],
@@ -98,27 +111,18 @@ if __name__ == "__main__":
         # "burstiness": np.logspace(-1, 2, 6),
         # "burstiness": [1],
         # "burstiness": [0.05,0.5,1,5],
-        "burstiness": [0.25, 0.5, 0.75, 1, 5],
+        "burstiness": [0.5, 0.75, 1, 1.5, 3],
     }
-     # continue_running = input('Did You create the output dir? (y/n)')
-    continue_running='y'
-    if continue_running == 'n':
-        print('Please create the output dir')
-        # output_dir = input('Please enter the output dir:')
-        exit()
-    # Ensure output directory exists
-    if test == 'y':
-        output_dir = "files/new_version/000/test"
-    else:
-        output_dir = "files/new_version/000"
+
+    if not test:
         print(output_dir)
-        input('continue?')
-    # output_dir = 'simulations/adtxns/test/00_abc'
+        input('Continue?')  # Pause for confirmation in full run mode
+
+    # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
 
-
     # Generate parameter grid
-    parameter_grid = execution.create_parameter_grid(parameter_dict)
+    parameter_grid = execution.create_parameter_grid(parameter_dict,seed=seed)
 
     # Run batch simulations
-    execution.batch_runner(parameter_grid,saved,output_dir)
+    execution.batch_runner(parameter_grid,output_dir,saved=saved)

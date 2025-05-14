@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from itertools import product
-from scipy.stats import uniform
 import psutil
 import matplotlib.pyplot as plt
 import gc
@@ -14,12 +13,11 @@ import gc
 # Add directories to Python path
 projdir = os.path.abspath(os.getcwd())
 sys.path.insert(0, projdir)
-sys.path.extend([
-    
-    os.path.abspath('/home/ccellerini/adtxns/modular_model/transactions/methods'),
-    os.path.abspath('/home/ccellerini/adtxns/modular_model/transactions'),
-    os.path.abspath('/home/ccellerini/adtxns/modular_model'),
-])
+#sys.path.extend([
+#    os.path.abspath('/home/ccellerini/adtxns/modular_model/transactions/methods'),
+#    os.path.abspath('/home/ccellerini/adtxns/modular_model/transactions'),
+#    os.path.abspath('/home/ccellerini/adtxns/modular_model'),
+#])
 
 import methods.model as model
 import methods.dists as dists
@@ -34,9 +32,18 @@ def convert_metadata_to_serializable(metadata):
     }
 
 # Generate parameter grid
-def create_parameter_grid(params):
+def create_parameter_grid(params,seed=None):
+    """
+    Generate a grid of parameters for batch simulations.
+    """
     keys, values = zip(*params.items())
     combinations = [dict(zip(keys, combination)) for combination in product(*values)]
+     # Generate a list of additional seeds
+    rng = np.random.default_rng(seed=seed)
+    seeds = rng.integers(low=0, high=2**32 - 1, size=len(combinations))
+    # Add the seeds to the parameter combinations
+    for i, combination in enumerate(combinations):
+        combination['seed'] = seeds[i]
     return combinations
 
 # Generate activity and attractivity samples
@@ -53,83 +60,8 @@ def generate_activity_attractivity(N, copula_type, copula_param, reversed_copula
     vect_att = attractivity_generator(unif_att)
     return vect_act, vect_att
 
-# Run a single simulation
-# def run_simulation(params):
-#     start_time = time.time()
 
-#     # Extract parameters
-#     s = params["s"]
-#     spending_rate = params["spending_rate"]
-#     initial_bal = params["initial_bal"]
-#     decimals = params["decimals"]
-#     N = params["N"]
-#     T = params["T"]
-#     D = params["D"]
-#     SIZE_SCALE = params["SIZE_SCALE"]
-#     LENGTH_SCALE = params["LENGTH_SCALE"]
-#     MEAN_IET = params["MEAN_IET"]
-#     burstiness = params["burstiness"]
-    
-#     # Extract copula type and parameter
-#     copula_type, copula_param, reversed_copula = params["copula"]
-
-#     # Extract activity and attractivity distributions
-#     activity_type, activity_params, activity_generator = params["activity_distribution"]
-#     attractivity_type, attractivity_params, attractivity_generator = params["attractivity_distribution"]
-
-#     # Generate activity and attractivity vectors dynamically
-#     vect_act, vect_att = generate_activity_attractivity(
-#         N=N,
-#         copula_type=copula_type,
-#         copula_param=copula_param,
-#         reversed_copula=reversed_copula,
-#         activity_generator=activity_generator,
-#         attractivity_generator=attractivity_generator
-#     )
-
-#     # Initialize the model
-#     nodes = model.create_nodes(N, activity=vect_act, attractivity=vect_att, spending=spending_rate, mean_iet=MEAN_IET, burstiness=burstiness)
-#     acts = model.initialize_activations(nodes)
-#     atts = model.initialize_attractivities(nodes)
-#     initial_bal = model.initialize_balances(nodes, balances=initial_bal, decimals=decimals)
-
-#     # Perform transactions
-#     transactions = []
-#     for t in range(T):
-#         transaction = model.transact(nodes, acts, atts, initial_bal, method='random_share', s=s)
-#         transactions.append(transaction)
-
-#     # Create a DataFrame for transactions
-#     header = ["timestamp", "source", "target", "amount", "source_bal", "target_bal"]
-#     transactions_df = pd.DataFrame(transactions, columns=header)
-#     # transactions_df['s'] = s
-#     # transactions['burstiness'] = burstiness
-
-#     # Metadata
-#     metadata = {
-#         'sprate': params["spending_rate_name"],
-#         'inbal': params["initial_bal_name"],
-#         'activity_type': activity_type,
-#         'activity_params': activity_params,
-#         'attractivity_type': attractivity_type,
-#         'attractivity_params': attractivity_params,
-#         'N': N,
-#         'T': T,
-#         'D': D,
-#         's': s,
-#         'decimals': decimals,
-#         'SIZE_SCALE': SIZE_SCALE,
-#         'LENGTH_SCALE': LENGTH_SCALE,
-#         'MEAN_IET': MEAN_IET,
-#         'burstiness': burstiness,
-#         'copula_type': copula_type,
-#         'copula_param': copula_param
-#     }
-
-#     execution_time = time.time() - start_time
-#     return transactions_df, metadata, execution_time
-
-def run_simulation(params, saved=None):
+def run_simulation(params, saved=None, seed=None):
     """
     Run a single simulation.
 
@@ -154,6 +86,7 @@ def run_simulation(params, saved=None):
     start_time = time.time()
 
     # Extract parameters
+    seed = params["seed"]
     s = params["s"]
     decimals = params["decimals"]
     N = params["N"]
@@ -163,6 +96,12 @@ def run_simulation(params, saved=None):
     LENGTH_SCALE = params["LENGTH_SCALE"]
     MEAN_IET = params["MEAN_IET"]
     burstiness = params["burstiness"]
+
+    # Set random seed for reproducibility
+    # TODO: Figure out how to get the distributions to use the seed
+    #    np.random.seed(seed)
+    #    dists.set_seed(seed) # Copilot halucinated this but maybe it is needed
+    rng = np.random.default_rng(seed)
 
     # Extract distributions and generators
     sprate_type, sprate_params, sprate_generator = params["spending_rate"]
@@ -187,11 +126,12 @@ def run_simulation(params, saved=None):
 
     # Initialize the model
     # todo: transition matrix return by its own method
-    nodes, transition_matrix = model.create_nodes(
+    nodes = model.create_nodes(
         N, activity=vect_act, attractivity=vect_att,
         spending=spending_rate, mean_iet=MEAN_IET, burstiness=burstiness
     )
-    acts = model.initialize_activations(nodes)
+    transitions = model.initialize_transition_matrix(nodes)
+    activations = model.initialize_activations(nodes)
     balances = model.initialize_balances(nodes, balances=initial_bal, decimals=decimals)
 
     # Prepare to write transactions
@@ -205,7 +145,7 @@ def run_simulation(params, saved=None):
 
     # Run the model
     for i in range(T):
-        transaction = model.transact(nodes, acts, transition_matrix, balances, method='random_share', s=s)
+        transaction = model.transact(nodes, activations, transitions, balances, method='random_share', s=s, rng=rng)
         if i >= burn_in_period:
             transactions_list[i-burn_in_period] = [transaction[term] for term in header]
 
@@ -215,6 +155,7 @@ def run_simulation(params, saved=None):
 
     # Compile metadata
     metadata = {
+        'seed': seed,
         'sprate_type': sprate_type,
         'sprate_params': sprate_params,
         'inbal_type': inbal_type,
@@ -273,7 +214,7 @@ def clear_memory():
     print("Memory cleared.")
 
 # Run batch simulations
-def batch_runner(params_grid, saved=None, output_dir=None):
+def batch_runner(params_grid, output_dir, saved=None):
     """
     Executes batch simulations using the provided parameter grid.
 
@@ -291,11 +232,6 @@ def batch_runner(params_grid, saved=None, output_dir=None):
     This function runs simulations in a batch, saves the transaction and node data,
     and logs metadata and memory usage.
     """
-
-    # Check if output directory was specified
-    if output_dir is None:
-        print('Please create the output dir')
-        output_dir = '/home/ccellerini/adtxns/files/you_forgot_to_set_output_dir'
 
     # Start the timer for the entire loop
     loop_start = time.time()
