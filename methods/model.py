@@ -9,62 +9,12 @@ from scipy.stats import betabinom
 
 from methods.dists import paired_samples, random_unifs, scale_pareto, scale_pwl
 
-# #! start
-# # * old
-# def create_nodes(N, activity=1, attractivity=1, spending=0.5, burstiness=1, mean_iet=1):
-#     '''
-#     Initialize node attributes from the given lists.
-#     '''
-#     # Input sanitation
-#     def list_len_N(value, name):
-#         if isinstance(value, (int, float, Decimal)):
-#             return np.full(N, value)
-#         elif isinstance(value, (list, np.ndarray)):
-#             assert len(value) == N, f"Please give a list or array that is the length of N for '{name}'."
-#             return np.array(value)
-#         else:
-#             raise TypeError(f"The '{name}' attribute must be a single value or a list/array of length N.")
-#     # Ensure that the attributes are the correct length
-#     activity = list_len_N(activity, 'activity')
-#     attractivity = list_len_N(attractivity, 'attractivity')
-#     spending = list_len_N(spending, 'spending')
-#     burstiness = list_len_N(burstiness, 'burstiness')
-#     # Confirm that the attributes are valid
-#     assert sum(activity) > 0, "The sum of the activity values must be greater than 0."
-#     assert sum(attractivity) > 0, "The sum of the attractivity values must be greater than 0."
-#     assert all([0 < spend <= 1 for spend in spending]), "The spending values must be between 0 and 1, exclusive of zero."
-#     assert all([0 < burst for burst in burstiness]), "The burstiness values must be greater than zero."
-#     # scale activity to get the desired mean inter-event time
-#     assert mean_iet > 0, "The mean inter-event time must be greater than 1."
-#     #! start
-#     # mean_act = 1/mean_iet
-#     # activity = mean_act*activity #the input activity is the activity potential, here it gets converted into activity rate
-#     # just renaming things to make more general
-#     activity_rate_converter = 1/mean_iet
-#     activity_rate = activity*activity_rate_converter
-#     #! end
-#     # scale attractivities to sum to one
-#     total_att = sum(attractivity)
-#     attractiveness = attractivity/total_att
-#     # create dictionary of nodes
-#     # TODO: This could be changed into a networkx graph to allow for more complex interactions
-#     nodes = {i:{} for i in range(N)}
-#     for node in nodes:
-#         nodes[node]['act_pot'] = activity[node]
-#         nodes[node]['att_pot'] = attractivity[node]
-#         nodes[node]["act"] = activity_rate[node]
-#         nodes[node]["att"] = attractiveness[node]
-#         nodes[node]["spr"] = spending[node]
-#         nodes[node]["iet"] = (1./(math.gamma(1+1/burstiness[node])),burstiness[node])
-#     # return the node dictionary
-
-#     return nodes
-
-# # * new with transition matrix to speed up
-def create_nodes(N, activity=1, attractivity=1, spending=0.5, burstiness=1, mean_iet=1):
+def create_nodes(N, activity=1, attractivity=1, spending=0.5, burstiness=1, mean_iet=1, seed=321):
     '''
-    Initialize node attributes from the given lists and precompute transition probabilities.
+    Initialize node attributes from the given lists
     '''
+    np.random.seed(seed)
+
     def list_len_N(value, name):
         if isinstance(value, (int, float, Decimal)):
             return np.full(N, value)
@@ -105,83 +55,7 @@ def create_nodes(N, activity=1, attractivity=1, spending=0.5, burstiness=1, mean
         nodes[node]["spr"] = spending[node]
         nodes[node]["iet"] = (1. / (math.gamma(1 + 1 / burstiness[node])), burstiness[node])
 
-    # Precompute transition matrix for self-avoiding selection
-    transition_matrix = np.zeros((N, N))
-    for i in range(N):
-        available_nodes = np.delete(attractivity, i)  # Remove self
-        norm_factor = np.sum(available_nodes)
-        transition_matrix[i, :i] = available_nodes[:i] / norm_factor  # Before self
-        transition_matrix[i, i+1:] = available_nodes[i:] / norm_factor  # After self
-
-    return nodes, transition_matrix
-
-
-np.random.seed(321)
-
-
-# #* new create nodes with text node labels
-
-# def create_nodes(N, activity=1, attractivity=1, spending=0.5, burstiness=1, mean_iet=1):
-
-#     import string
-#     '''
-#     Initialize node attributes from the given lists.
-#     '''
-#     # Input sanitation
-#     def list_len_N(value, name):
-#         if isinstance(value, (int, float, Decimal)):
-#             return np.full(N, value)
-#         elif isinstance(value, (list, np.ndarray)):
-#             assert len(value) == N, f"Please give a list or array that is the length of N for '{name}'."
-#             return np.array(value)
-#         else:
-#             raise TypeError(f"The '{name}' attribute must be a single value or a list/array of length N.")
-    
-#     # Ensure that the attributes are the correct length
-#     activity = list_len_N(activity, 'activity')
-#     attractivity = list_len_N(attractivity, 'attractivity')
-#     spending = list_len_N(spending, 'spending')
-#     burstiness = list_len_N(burstiness, 'burstiness')
-
-#     # Confirm that the attributes are valid
-#     assert sum(activity) > 0, "The sum of the activity values must be greater than 0."
-#     assert sum(attractivity) > 0, "The sum of the attractivity values must be greater than 0."
-#     assert all(0 < spend <= 1 for spend in spending), "The spending values must be between 0 and 1, exclusive of zero."
-#     assert all(0 < burst for burst in burstiness), "The burstiness values must be greater than zero."
-    
-#     # Scale activity to get the desired mean inter-event time
-#     assert mean_iet > 0, "The mean inter-event time must be greater than 1."
-#     activity_rate_converter = 1 / mean_iet
-#     activity = activity * activity_rate_converter
-
-#     # Scale attractivities to sum to one
-#     total_att = sum(attractivity)
-#     attractivity = attractivity / total_att
-
-#     # **Generate unique keys in the format '0a', '0b', ..., '9z'**
-#     keys = [f"{i}{letter}" for i in range(10) for letter in string.ascii_lowercase][:N]
-
-#     # **Map data to the new dynamic keys**
-#     activity = dict(zip(keys, activity))
-#     attractivity = dict(zip(keys, attractivity))
-#     spending = dict(zip(keys, spending))
-#     burstiness = dict(zip(keys, burstiness))
-
-#     # Create the dictionary of nodes using new keys
-#     nodes = {key: {} for key in keys}
-
-#     for node in nodes:
-#         nodes[node]["act"] = activity[node]
-#         nodes[node]["att"] = attractivity[node]
-#         nodes[node]["spr"] = spending[node]
-#         nodes[node]["iet"] = (1. / (math.gamma(1 + 1 / burstiness[node])), burstiness[node])
-
-#     # Print a sample to verify
-#     print({k: nodes[k] for k in list(nodes.keys())[:5]})  # Prints first 5 entries
-
-#     # Return the node dictionary
-#     return nodes
-#! end
+    return nodes
 
 def initialize_activations(nodes, mean_iet = 1):
     '''
@@ -194,43 +68,39 @@ def initialize_activations(nodes, mean_iet = 1):
     return activations
 
 
-def activate(now,activity,distribution,mean_iet = 1,rng=np.random.default_rng()): #added mean_iet
+def activate(now,activity,distribution,mean_iet = 1,rng=np.random.default_rng()): 
     '''
     Get the next activation time for the given node
     '''
     # draw inter-event time from the relevant distribution
     scale_act = 1/activity # invert the activity
-    # ! start
-    #*old
-    # shape_iet, scale_iet = distribution # ?     
-    # next = now + scale_act*scale_iet*rng.weibull(a=shape_iet) #old
-    #* new, just swapped scale and shape
     scale_iet, k = distribution
     l = scale_act * scale_iet * mean_iet
     next = now + l * rng.weibull(a=k) 
-    # ! end
     return next
 
 
-#!! deprecated
-def initialize_attractivities(nodes):
+def initialize_transition_matrix(nodes, self_selection=False):
     '''
-    Initialize the attractiveness dictionary for the given nodes
+    Precompute transition matrix with or without self-avoiding selection.
     '''
-    # return the attractivity dictionary, keyed by node
-    attractivities = {node:nodes[node]["att"] for node in nodes}
-    return attractivities
-
-# TODO
-def initialize_transitions_matrix(nodes, self_selection=False):
+    N = len(nodes)
+    attractivities = np.array([nodes[node]["att_pot"] for node in nodes])
+    transition_matrix = np.zeros((N, N))
     if self_selection:
-        pass
+        for i in range(N):
+            available_nodes = attractivities
+            norm_factor = np.sum(available_nodes)
+            transition_matrix[i, :] = available_nodes / norm_factor  # Normalize all nodes
     else:
-        pass
+        for i in range(N):
+            available_nodes = np.delete(attractivities, i)  # Remove self
+            norm_factor = np.sum(available_nodes)
+            transition_matrix[i, :i] = available_nodes[:i] / norm_factor  # Before self
+            transition_matrix[i, i+1:] = available_nodes[i:] / norm_factor  # After self
 
-    attractivities = {node:transition_matrix[node] for node in nodes}
+    return transition_matrix
 
-    return attractivities
 
 def initialize_balances(nodes,balances=None,decimals=4):
     '''
@@ -250,19 +120,6 @@ def initialize_balances(nodes,balances=None,decimals=4):
     return balances
 
  
-#! these modification are in test
-# ! start
-# ! old, selft selection allowed
-#  def select(attractivities,rng=np.random.default_rng()):
-#     '''
-#     Select a node to transact with
-#     '''
-#     # select target node
-#     # TODO: This would need to be changed with a networkx graph to allow for more complex interactions
-#     node_j = rng.choice(list(attractivities.keys()), p=list(attractivities.values()))
-#     return node_j
-
-# ! new, no self selection
 def select(attractivities, current_node, rng=np.random.default_rng()):
     '''
     Select a node to transact with, ensuring no self-selection.
@@ -286,7 +143,7 @@ def select(attractivities, current_node, rng=np.random.default_rng()):
     node_j = rng.choice(list(available_nodes.keys()), p=probabilities)
     
     return node_j
-# ! end
+
 
 def pay_random_share(node_i, node_j, balances, p, s, rng=np.random.default_rng()):
     '''
@@ -295,15 +152,8 @@ def pay_random_share(node_i, node_j, balances, p, s, rng=np.random.default_rng()
         - If the balance is discrete, the transaction size is a Beta Binomial sample.    
 
     '''
-    # if params is None:
-    #     params = {"p": 0.5, "s": 1.0}
-    # # print(f"pay_random_share called with {node_i}, {node_j}, params={params}")
-    # # sample transaction weight
-    # # beta_a, beta_b = params
-    # p = params.get('p', 0.5)
-    # s = params.get('s', 1.0)
     beta_a, beta_b = p * s, (1 - p) * s
-    # todo: 'a' and 'b' parametrized with balance and 's_prime' (I'd call it 'r' instead of 's_prime')
+    # todo: 'a' and 'b' parametrized with balance and overdispersion parameter
     
     if isinstance(balances[node_i],Decimal):
         exp = balances[node_i].as_tuple().exponent # -(number of decimal places)
@@ -318,6 +168,7 @@ def pay_random_share(node_i, node_j, balances, p, s, rng=np.random.default_rng()
     balances[node_j] += txn_size
     # return the transaction details
     return txn_size
+
 
 def pay_share(node_i, node_j, share, balances, rng=np.random.default_rng()):
     '''
@@ -344,85 +195,27 @@ def pay_share(node_i, node_j, share, balances, rng=np.random.default_rng()):
     # return the transaction size
     return txn_size
 
-DEFAULTS = {
-    "random_share": {"p": 1, "s": 0.5},
-    "share": {"share": 0.1},
-}
 
-def get_default_params(method):
-    return DEFAULTS.get(method, {}).copy()
-
-
-# ! old
-# def transact(nodes,activations,attractivities,balances,method="share",**kwargs):
-#     '''
-#     Simulate the next transaction    '''
-
-#     # select next active node from the heap
-#     now, node_i = hq.heappop(activations)
-#     # have the node select a target to transact with
-#     # ! start
-#     # ! node_j = select(attractivities) 
-#     node_j = select(attractivities, node_i)
-#     #! end
-
-#     # pay the target node
-#     if method=="random_share":
-#         p = nodes[node_i]["spr"]
-#         s = kwargs.get("s", 1.0)  # Default to 1.0 if not provided
-#         amount = pay_random_share(node_i, node_j, balances, p, s)
-#     else:
-#         amount = pay_share(node_i, node_j, nodes[node_i]["spr"], balances)
-#     # update the next activation time for the node
-#     next = activate(now,nodes[node_i]["act"],nodes[node_i]["iet"])
-#     hq.heappush(activations,(next, node_i))
-#     # return the transaction, the updated balances, and the updated activations
-#     return {"timestamp":now,
-#             "source":node_i,
-#             "target":node_j,
-#             "weight":amount,
-#             "source_bal":balances[node_i],
-#             "target_bal":balances[node_j]}
-# ! end
-#*new
-def transact(nodes, activations, transition_matrix, balances, method="share", rng=np.random.default_rng(), **kwargs):
-
+def transact(nodes, activations, transition_matrix, balances, rng=np.random.default_rng(), **kwargs):
     '''
     Simulate the next transaction using a precomputed transition matrix.
     '''
-
     # Select next active node
     now, node_i = hq.heappop(activations)
 
     # Select target node using the precomputed transition matrix
     node_j = rng.choice(len(nodes), p=transition_matrix[node_i])
-    #! old
-    # Pay the target node
-    # if method == "random_share":
-    #     p = nodes[node_i]["spr"]
-    #     s = kwargs.get("s", 1.0)  # Default to 1.0 if not provided
-    #     amount = pay_random_share(node_i, node_j, balances, p, s)
-    # else:
-    #     amount = pay_share(node_i, node_j, nodes[node_i]["spr"], balances)
 
-    # # Update next activation time
-    # next_activation = activate(now, nodes[node_i]["act"], nodes[node_i]["iet"])
-
-    if method == "random_share":
-        p = nodes[node_i]["spr"]
-        s = kwargs.get("s", 1.0)
+    # Pay the selected node a share of the available balance
+    p = nodes[node_i]["spr"]
+    s = kwargs.get("s", None) # Default to None, i.e. Binomial, if not provided
+    if s is not None:
         amount = pay_random_share(node_i, node_j, balances, p, s, rng=rng)
-    # if method == "random_share":
-    #     p = nodes[node_i]["spr"]
-    #     s = kwargs.get("s", 1.0)
-    #     beta_a, beta_b = p * s, (1 - p) * s
-    #     amount = balances[node_i] * rng.beta(beta_a, beta_b)
-    #     balances[node_i] -= amount
-    #     balances[node_j] += amount
     else:
         amount = pay_share(node_i, node_j, nodes[node_i]["spr"], balances)
+    
+    # Update the next activation time for the source node
     next_activation = activate(now, nodes[node_i]["act"], nodes[node_i]["iet"], rng=rng)
-
     hq.heappush(activations, (next_activation, node_i))
 
     # Return transaction details
@@ -436,22 +229,22 @@ def transact(nodes, activations, transition_matrix, balances, method="share", rn
     }
 
 
-
-def interact(nodes,activations,attractivities,iet=np.random.exponential):
+def interact(nodes,activations,transition_matrix,rng=np.random.default_rng()):
     '''
     Simulate the next interaction
     '''
     # select next active node from the heap
     now, node_i = hq.heappop(activations)
-    # have the node select a target to transact with
-    node_j = select(attractivities)
+    # Select target node using the precomputed transition matrix
+    node_j = rng.choice(len(nodes), p=transition_matrix[node_i])
     # update the next activation time for the node
-    next = activate(now,nodes[node_i]["act"],nodes[node_i]["iet"])
+    next = activate(now,nodes[node_i]["act"],nodes[node_i]["iet"],rng=rng)
     hq.heappush(activations,(next, node_i))
     # return the transaction, the updated balances, and the updated activations
     return {"timestamp":now,
             "source":node_i,
             "target":node_j}
+
 
 def run_interactions(N,T):
     '''
@@ -459,15 +252,16 @@ def run_interactions(N,T):
     '''
     # initialize the model
     nodes = create_nodes(N)
+    transitions = initialize_transition_matrix(nodes, self_selection=True)
     activations = initialize_activations(nodes)
-    attractivities = initialize_attractivities(nodes)
     # print the output header
     header = ["timestamp","source","target","amount","source_bal","target_bal"]
     print(",".join(header))
     # run the model
     for i in range(T):
-        interaction = interact(nodes,activations,attractivities)
+        interaction = interact(nodes,activations,transitions)
         print(",".join([str(interaction[term]) for term in header]))
+
 
 def run_transactions(N,T):
     '''
@@ -475,13 +269,13 @@ def run_transactions(N,T):
     '''
     # initialize the model
     nodes = create_nodes(N)
+    transitions = initialize_transition_matrix(nodes, self_selection=True)
     activations = initialize_activations(nodes)
-    attractivities = initialize_attractivities(nodes)
     balances = initialize_balances(nodes)
     # print the output header
     header = ["timestamp","source","target","amount","source_bal","target_bal"]
     print(",".join(header))
     # run the model
     for i in range(T):
-        transaction = transact(nodes,activations,attractivities,balances)
+        transaction = transact(nodes,activations,transitions,balances)
         print(",".join([str(transaction[term]) for term in header]))
