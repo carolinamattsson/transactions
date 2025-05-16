@@ -1,5 +1,5 @@
 # Ignore all CSV files
-*.csv
+example.csv
 
 
 # Ignore the simulation output files
