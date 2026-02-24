@@ -1,6 +1,11 @@
 # Ignore all CSV files
 *.csv
 
+
+# Ignore the simulation output files
+output/
+requirements.py
+
 # Ignore Python cache files
 __pycache__/
 *.py[cod]
