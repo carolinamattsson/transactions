@@ -19,8 +19,8 @@ sys.path.insert(0, projdir)
 #    os.path.abspath('/home/ccellerini/adtxns/modular_model'),
 #])
 
-import methods.model as model
-import methods.dists as dists
+import src.model as model
+import src.dists as dists
 
 # Convert metadata to JSON-serializable format
 def convert_metadata_to_serializable(metadata):
