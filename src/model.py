@@ -62,7 +62,7 @@ def initialize_activations(nodes, mean_iet = 1):
     Initialize the activation heap for the given nodes
     '''
     # create a min heap of activations, keyed by the activation time
-    # activations = [(activate(0,nodes[node]["act"],nodes[node]["iet"]), node) for node in nodes] 
+    # activations = [(activate(0,nodes[node]["act"],nodes[node]["iet"]), node) for node in nodes]
     activations = [(activate(0,nodes[node]["act"],nodes[node]["iet"],mean_iet), node) for node in nodes] #added mean_iet
     hq.heapify(activations)
     return activations
@@ -82,12 +82,21 @@ def activate(now,activity,distribution,mean_iet = 1,rng=np.random.default_rng())
 
 def initialize_transition_matrix(nodes, self_selection=False):
     '''
-    Precompute transition matrix with or without self-avoiding selection.
+    Precompute the per-source target-selection table. Each row stores the
+    cumulative probability of picking targets 0..N-1, so the per-event sampling
+    in transact()/interact() can use np.searchsorted on a fixed array instead
+    of rng.choice(p=...) (which re-cumsums the probability vector every call).
+    Row sums are 1.0 by construction (last column = 1.0).
+    With self_selection=False the diagonal is 0, so cumrow[i,i] == cumrow[i,i-1]
+    and searchsorted(side='right') will never return i.
     '''
     N = len(nodes)
     attractivities = np.array([nodes[node]["att_pot"] for node in nodes])
     transition_matrix = np.zeros((N, N))
     if self_selection:
+        # Memory escape hatch left on the table: every row is identical here, so
+        # one shared cumrow would suffice (O(N) instead of O(N^2)). Would also
+        # need transact/interact to skip the per-source row indexing.
         for i in range(N):
             available_nodes = attractivities
             norm_factor = np.sum(available_nodes)
@@ -99,7 +108,7 @@ def initialize_transition_matrix(nodes, self_selection=False):
             transition_matrix[i, :i] = available_nodes[:i] / norm_factor  # Before self
             transition_matrix[i, i+1:] = available_nodes[i:] / norm_factor  # After self
 
-    return transition_matrix
+    return np.cumsum(transition_matrix, axis=1)
 
 
 def initialize_balances(nodes,balances=None,decimals=4):
@@ -160,6 +169,8 @@ def pay_random_share(node_i, node_j, balances, p, s, rng=np.random.default_rng()
         n = int(balances[node_i].scaleb(-exp))
         txn_size_dist = betabinom(n,beta_a,beta_b) # integer valued distribution
         txn_size = txn_size_dist.rvs() # sample from the distribution
+        # Note: betabinom.rvs() draws from scipy's global RNG, not the `rng` passed in.
+        # Known reproducibility wart on the discrete-balance path; ignore unless seed-fixing matters.
         txn_size = Decimal(txn_size).scaleb(exp) # integer to decimal (e.g.: 1234 -> 12.34)
     else:
         txn_size = balances[node_i]*rng.beta(beta_a,beta_b)
@@ -231,8 +242,11 @@ def transact(nodes, activations, transition_matrix, balances, rng=np.random.defa
     # Select next active node
     now, node_i = hq.heappop(activations)
 
-    # Select target node using the precomputed transition matrix
-    node_j = rng.choice(len(nodes), p=transition_matrix[node_i])
+    # Select target node via searchsorted on the precomputed cumulative row
+    # (scale by the row's last entry to be robust against fp drift; with
+    # self_selection=False the diagonal is 0, so side='right' avoids self).
+    cumrow = transition_matrix[node_i]
+    node_j = int(np.searchsorted(cumrow, rng.random() * cumrow[-1], side='right'))
 
     # Pay the selected node a share of the available balance
     p = nodes[node_i]["spr"]
@@ -268,8 +282,9 @@ def interact(nodes,activations,transition_matrix,rng=np.random.default_rng()):
     '''
     # select next active node from the heap
     now, node_i = hq.heappop(activations)
-    # Select target node using the precomputed transition matrix
-    node_j = rng.choice(len(nodes), p=transition_matrix[node_i])
+    # Select target node via searchsorted on the precomputed cumulative row
+    cumrow = transition_matrix[node_i]
+    node_j = int(np.searchsorted(cumrow, rng.random() * cumrow[-1], side='right'))
     # update the next activation time for the node
     next = activate(now,nodes[node_i]["act"],nodes[node_i]["iet"],rng=rng)
     hq.heappush(activations,(next, node_i))
