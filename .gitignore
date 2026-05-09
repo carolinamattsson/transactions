@@ -1,6 +1,7 @@
 # Ignore all CSV files
 *.csv
 *.DS_Store
+.claude/
 
 # Ignore the simulation output files
 output/
