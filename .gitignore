@@ -2,13 +2,19 @@
 *.csv
 *.DS_Store
 
-
 # Ignore the simulation output files
 output/
 requirements.py
 
 # Ignore Jupyter Notebooks
 notebooks/
+paper/
+
+# Ignore data files and figures
+berka/berka-dataset/
+berka/figs/
+bank/
+sarafu/*.pdf
 
 # Ignore Python cache files
 *__pycache__/
