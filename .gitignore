@@ -7,6 +7,9 @@
 output/
 requirements.py
 
+# Ignore Jupyter Notebooks
+notebooks/
+
 # Ignore Python cache files
 *__pycache__/
 *.py[cod]
