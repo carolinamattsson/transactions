@@ -127,12 +127,11 @@ def run_simulation(params, saved=None, seed=None):
     initial_bal = inbal_generator(N)
 
     # Initialize the model
-    # todo: transition matrix return by its own method
     nodes = model.create_nodes(
         N, activity=vect_act, attractivity=vect_att,
         spending=spending_rate, mean_iet=MEAN_IET, burstiness=burstiness
     )
-    transitions = model.initialize_transition_matrix(nodes)
+    sampler = model.build_target_sampler(nodes)
     activations = model.initialize_activations(nodes)
     balances = model.initialize_balances(nodes, balances=initial_bal, decimals=decimals)
 
@@ -147,7 +146,7 @@ def run_simulation(params, saved=None, seed=None):
 
     # Run the model
     for i in range(T):
-        transaction = model.transact(nodes, activations, transitions, balances, method='random_share', s=s, dispersion=dispersion, tau=tau, rng=rng)
+        transaction = model.transact(nodes, activations, sampler, balances, method='random_share', s=s, dispersion=dispersion, tau=tau, rng=rng)
         if i >= burn_in_period:
             transactions_list[i-burn_in_period] = [transaction[term] for term in header]
 

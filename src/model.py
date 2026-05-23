@@ -4,6 +4,7 @@
 import math
 import numpy as np
 import heapq as hq
+from dataclasses import dataclass
 from decimal import Decimal
 from scipy.stats import betabinom
 
@@ -57,13 +58,11 @@ def create_nodes(N, activity=1, attractivity=1, spending=0.5, burstiness=1, mean
 
     return nodes
 
-def initialize_activations(nodes, mean_iet = 1):
+def initialize_activations(nodes, mean_iet=1):
     '''
     Initialize the activation heap for the given nodes
     '''
-    # create a min heap of activations, keyed by the activation time
-    # activations = [(activate(0,nodes[node]["act"],nodes[node]["iet"]), node) for node in nodes]
-    activations = [(activate(0,nodes[node]["act"],nodes[node]["iet"],mean_iet), node) for node in nodes] #added mean_iet
+    activations = [(activate(0, nodes[node]["act"], nodes[node]["iet"], mean_iet), node) for node in nodes]
     hq.heapify(activations)
     return activations
 
@@ -80,35 +79,85 @@ def activate(now,activity,distribution,mean_iet = 1,rng=np.random.default_rng())
     return next
 
 
-def initialize_transition_matrix(nodes, self_selection=False):
+@dataclass
+class TargetSampler:
     '''
-    Precompute the per-source target-selection table. Each row stores the
-    cumulative probability of picking targets 0..N-1, so the per-event sampling
-    in transact()/interact() can use np.searchsorted on a fixed array instead
-    of rng.choice(p=...) (which re-cumsums the probability vector every call).
-    Row sums are 1.0 by construction (last column = 1.0).
-    With self_selection=False the diagonal is 0, so cumrow[i,i] == cumrow[i,i-1]
-    and searchsorted(side='right') will never return i.
+    Holds the precomputed state needed to draw a target node for a given source.
+
+    Three decisions are decoupled from each other:
+      - sample_self (here): does the sampling distribution include self?
+      - record_self (in transact/interact): when self is drawn, do we emit a
+        transaction or skip the activation?
+      - storage strategy (here, via matrix_n_threshold in build_target_sampler):
+        precomputed (N, N) cumulative-row matrix vs. shared (N,) cumulative
+        attractivity vector. The matrix is the extension point for per-source
+        heterogeneous attractivities; the shared vector exists so N > ~20k fits
+        in memory.
+    '''
+    kind: str            # "matrix" or "resample"
+    data: np.ndarray     # (N, N) cumulative-row array, or (N,) shared cumulative attractivity vector
+    sample_self: bool
+    n: int
+
+
+def build_target_sampler(nodes, *, sample_self=False, matrix_n_threshold=20_000):
+    '''
+    Build a TargetSampler for picking transaction targets.
+
+    Parameters
+    ----------
+    sample_self : bool, default False
+        Whether self is in the support of the sampling distribution. With the
+        matrix path, sample_self=False zeroes the diagonal so searchsorted will
+        never return the source. With the resample path, it triggers rejection
+        sampling (redraw until j != i).
+    matrix_n_threshold : int, default 20_000
+        N at or below which the precomputed (N, N) matrix is built. Above this,
+        sampling falls back to an O(N)-memory shared cumulative vector. Set
+        very high to force the matrix path, or 0 to force the resample path.
     '''
     N = len(nodes)
     attractivities = np.array([nodes[node]["att_pot"] for node in nodes])
-    transition_matrix = np.zeros((N, N))
-    if self_selection:
-        # Memory escape hatch left on the table: every row is identical here, so
-        # one shared cumrow would suffice (O(N) instead of O(N^2)). Would also
-        # need transact/interact to skip the per-source row indexing.
-        for i in range(N):
-            available_nodes = attractivities
-            norm_factor = np.sum(available_nodes)
-            transition_matrix[i, :] = available_nodes / norm_factor  # Normalize all nodes
-    else:
-        for i in range(N):
-            available_nodes = np.delete(attractivities, i)  # Remove self
-            norm_factor = np.sum(available_nodes)
-            transition_matrix[i, :i] = available_nodes[:i] / norm_factor  # Before self
-            transition_matrix[i, i+1:] = available_nodes[i:] / norm_factor  # After self
 
-    return np.cumsum(transition_matrix, axis=1)
+    if N <= matrix_n_threshold:
+        transition_matrix = np.zeros((N, N))
+        if sample_self:
+            for i in range(N):
+                norm_factor = np.sum(attractivities)
+                transition_matrix[i, :] = attractivities / norm_factor
+        else:
+            for i in range(N):
+                available_nodes = np.delete(attractivities, i)
+                norm_factor = np.sum(available_nodes)
+                transition_matrix[i, :i] = available_nodes[:i] / norm_factor
+                transition_matrix[i, i+1:] = available_nodes[i:] / norm_factor
+        data = np.cumsum(transition_matrix, axis=1)
+        kind = "matrix"
+    else:
+        # Shared cumulative attractivity vector; every source draws from the same
+        # distribution. When sample_self=False, exclusion is enforced by rejection
+        # in sample_target.
+        data = np.cumsum(attractivities)
+        kind = "resample"
+
+    return TargetSampler(kind=kind, data=data, sample_self=sample_self, n=N)
+
+
+def sample_target(sampler, i, rng):
+    '''
+    Draw a target node index for source node i.
+    '''
+    if sampler.kind == "matrix":
+        cumrow = sampler.data[i]
+        return int(np.searchsorted(cumrow, rng.random() * cumrow[-1], side='right'))
+    # resample path
+    cumvec = sampler.data
+    if sampler.sample_self:
+        return int(np.searchsorted(cumvec, rng.random() * cumvec[-1], side='right'))
+    while True:
+        j = int(np.searchsorted(cumvec, rng.random() * cumvec[-1], side='right'))
+        if j != i:
+            return j
 
 
 def initialize_balances(nodes,balances=None,decimals=4):
@@ -235,18 +284,34 @@ def pay_share(node_i, node_j, share, balances, rng=np.random.default_rng()):
     return txn_size
 
 
-def transact(nodes, activations, transition_matrix, balances, rng=np.random.default_rng(), **kwargs):
+def transact(nodes, activations, sampler, balances, rng=np.random.default_rng(), *, record_self=False, record_zero=True, **kwargs):
     '''
-    Simulate the next transaction using a precomputed transition matrix.
+    Simulate the next transaction using a TargetSampler.
+
+    When sampler.sample_self is True and record_self is False, a self-draw is
+    skipped: the source's next activation is scheduled but no transaction is
+    emitted, and the function returns None. The realized transaction rate per
+    node scales down by p_ii relative to record_self=True.
+
+    When record_zero is False and the computed transaction amount is exactly
+    zero, the activation is similarly advanced and None is returned. Zero-amount
+    transactions can arise from (a) float64 balance underflow on hyperactive
+    nodes — after enough repeated 0.8x decay the balance rounds to 0 and emits
+    a stream of zero transactions, which are simulation artifacts; or (b)
+    BetaBinomial / Binomial draws that legitimately yield zero, which the
+    caller may or may not want to record.
     '''
     # Select next active node
     now, node_i = hq.heappop(activations)
 
-    # Select target node via searchsorted on the precomputed cumulative row
-    # (scale by the row's last entry to be robust against fp drift; with
-    # self_selection=False the diagonal is 0, so side='right' avoids self).
-    cumrow = transition_matrix[node_i]
-    node_j = int(np.searchsorted(cumrow, rng.random() * cumrow[-1], side='right'))
+    # Select target node via the configured sampling strategy
+    node_j = sample_target(sampler, node_i, rng)
+
+    # Skip-the-activation semantics: advance the heap but emit no transaction
+    if sampler.sample_self and node_j == node_i and not record_self:
+        next_activation = activate(now, nodes[node_i]["act"], nodes[node_i]["iet"], rng=rng)
+        hq.heappush(activations, (next_activation, node_i))
+        return None
 
     # Pay the selected node a share of the available balance
     p = nodes[node_i]["spr"]
@@ -260,7 +325,14 @@ def transact(nodes, activations, transition_matrix, balances, rng=np.random.defa
         amount = pay_random_share(node_i, node_j, balances, p, s, rng=rng)
     else:
         amount = pay_share(node_i, node_j, nodes[node_i]["spr"], balances)
-    
+
+    # Skip-the-record semantics: advance the heap but emit no transaction.
+    # The amount==0 mutations in pay_*() are no-ops, so balances are unchanged.
+    if amount == 0 and not record_zero:
+        next_activation = activate(now, nodes[node_i]["act"], nodes[node_i]["iet"], rng=rng)
+        hq.heappush(activations, (next_activation, node_i))
+        return None
+
     # Update the next activation time for the source node
     next_activation = activate(now, nodes[node_i]["act"], nodes[node_i]["iet"], rng=rng)
     hq.heappush(activations, (next_activation, node_i))
@@ -276,22 +348,24 @@ def transact(nodes, activations, transition_matrix, balances, rng=np.random.defa
     }
 
 
-def interact(nodes,activations,transition_matrix,rng=np.random.default_rng()):
+def interact(nodes, activations, sampler, rng=np.random.default_rng(), *, record_self=False):
     '''
-    Simulate the next interaction
+    Simulate the next interaction using a TargetSampler.
+
+    Returns None when sampler.sample_self is True, record_self is False, and a
+    self-draw occurred (the activation is still advanced).
     '''
     # select next active node from the heap
     now, node_i = hq.heappop(activations)
-    # Select target node via searchsorted on the precomputed cumulative row
-    cumrow = transition_matrix[node_i]
-    node_j = int(np.searchsorted(cumrow, rng.random() * cumrow[-1], side='right'))
+    node_j = sample_target(sampler, node_i, rng)
     # update the next activation time for the node
-    next = activate(now,nodes[node_i]["act"],nodes[node_i]["iet"],rng=rng)
-    hq.heappush(activations,(next, node_i))
-    # return the transaction, the updated balances, and the updated activations
-    return {"timestamp":now,
-            "source":node_i,
-            "target":node_j}
+    next = activate(now, nodes[node_i]["act"], nodes[node_i]["iet"], rng=rng)
+    hq.heappush(activations, (next, node_i))
+    if sampler.sample_self and node_j == node_i and not record_self:
+        return None
+    return {"timestamp": now,
+            "source": node_i,
+            "target": node_j}
 
 
 def run_interactions(N,T):
@@ -300,14 +374,14 @@ def run_interactions(N,T):
     '''
     # initialize the model
     nodes = create_nodes(N)
-    transitions = initialize_transition_matrix(nodes, self_selection=True)
+    sampler = build_target_sampler(nodes, sample_self=True)
     activations = initialize_activations(nodes)
     # print the output header
     header = ["timestamp","source","target","amount","source_bal","target_bal"]
     print(",".join(header))
     # run the model
     for i in range(T):
-        interaction = interact(nodes,activations,transitions)
+        interaction = interact(nodes, activations, sampler, record_self=True)
         print(",".join([str(interaction[term]) for term in header]))
 
 
@@ -317,7 +391,7 @@ def run_transactions(N,T):
     '''
     # initialize the model
     nodes = create_nodes(N)
-    transitions = initialize_transition_matrix(nodes, self_selection=True)
+    sampler = build_target_sampler(nodes, sample_self=True)
     activations = initialize_activations(nodes)
     balances = initialize_balances(nodes)
     # print the output header
@@ -325,5 +399,5 @@ def run_transactions(N,T):
     print(",".join(header))
     # run the model
     for i in range(T):
-        transaction = transact(nodes,activations,transitions,balances)
+        transaction = transact(nodes, activations, sampler, balances, record_self=True)
         print(",".join([str(transaction[term]) for term in header]))
