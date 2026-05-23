@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite both the software (this file) and the accompanying preprint (see preferred-citation)."
+message: "If you use this software, please cite the accompanying preprint (see preferred-citation)."
 title: "transactions"
 abstract: "A mechanistic, stochastic, generative model of financial transactions as random walks on activity-driven temporal networks."
 type: software
@@ -8,10 +8,6 @@ authors:
     given-names: "Carolina E."
   - family-names: Cellerini
     given-names: Claudio
-  - family-names: Ojer
-    given-names: Jaume
-  - family-names: Starnini
-    given-names: Michele
 version: "0.1.0-alpha"
 date-released: "2026-05-23"
 license: MIT
