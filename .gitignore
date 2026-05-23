@@ -1,11 +1,11 @@
-# Ignore all CSV files
+# Ignore all CSV files except the tracked example
 *.csv
+!example.csv
 *.DS_Store
 .claude/
 
 # Ignore the simulation output files
 output/
-requirements.py
 
 # Ignore Jupyter Notebooks
 notebooks/
@@ -14,8 +14,12 @@ paper/
 # Ignore data files and figures
 berka/berka-dataset/
 berka/figs/
+berka/other/
 bank/
 sarafu/*.pdf
+
+# Local scratch
+tmp/
 
 # Ignore Python cache files
 *__pycache__/
