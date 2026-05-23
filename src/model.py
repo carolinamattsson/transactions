@@ -230,34 +230,6 @@ def pay_random_share(node_i, node_j, balances, p, s, rng=np.random.default_rng()
     return txn_size
 
 
-def pay_random_share_logitn(node_i, node_j, balances, p, tau, rng=np.random.default_rng()):
-    '''
-    Pay the selected node a random share of the available balance under
-    logit-normal dispersion: q ~ LogitN(logit p, tau^2), transaction = q * balance.
-
-        - If the balance is continuous, the transaction size is q * balance.
-        - If the balance is discrete, the transaction size is Binomial(balance, q).
-
-    Note on naming: 'p' here is the per-node spending propensity (the SM's s);
-    'tau' is the new logit-scale dispersion parameter (parallel to BetaBin's xi).
-    '''
-    # draw q from LogitN(logit p, tau^2)
-    z = rng.standard_normal()
-    logit_p = math.log(p) - math.log1p(-p)
-    q = 1.0 / (1.0 + math.exp(-(logit_p + tau * z)))
-
-    if isinstance(balances[node_i], Decimal):
-        exp = balances[node_i].as_tuple().exponent
-        n = int(balances[node_i].scaleb(-exp))
-        txn_size = int(rng.binomial(n, q))
-        txn_size = Decimal(txn_size).scaleb(exp)
-    else:
-        txn_size = balances[node_i] * q
-    balances[node_i] -= txn_size
-    balances[node_j] += txn_size
-    return txn_size
-
-
 def pay_share(node_i, node_j, share, balances, rng=np.random.default_rng()):
     '''
     Pay the selected node a share of the available balance:
@@ -316,12 +288,8 @@ def transact(nodes, activations, sampler, balances, rng=np.random.default_rng(),
     # Pay the selected node a share of the available balance
     p = nodes[node_i]["spr"]
     s = kwargs.get("s", None) # BetaBin precision (the SM's xi); None falls back to Binomial
-    tau = kwargs.get("tau", None) # logit-normal dispersion
-    dispersion = kwargs.get("dispersion", None) # 'logitnormal' selects pay_random_share_logitn
 
-    if dispersion == "logitnormal" and tau is not None:
-        amount = pay_random_share_logitn(node_i, node_j, balances, p, tau, rng=rng)
-    elif s is not None:
+    if s is not None:
         amount = pay_random_share(node_i, node_j, balances, p, s, rng=rng)
     else:
         amount = pay_share(node_i, node_j, nodes[node_i]["spr"], balances)

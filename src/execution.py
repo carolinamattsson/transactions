@@ -88,8 +88,6 @@ def run_simulation(params, saved=None, seed=None):
     # Extract parameters
     seed = params["seed"]
     s = params["s"]
-    dispersion = params.get("dispersion", None)  # 'logitnormal' selects pay_random_share_logitn
-    tau = params.get("tau", None)                 # logit-normal dispersion (used when dispersion='logitnormal')
     decimals = params["decimals"]
     N = params["N"]
     T = params["T"]
@@ -146,7 +144,7 @@ def run_simulation(params, saved=None, seed=None):
 
     # Run the model
     for i in range(T):
-        transaction = model.transact(nodes, activations, sampler, balances, method='random_share', s=s, dispersion=dispersion, tau=tau, rng=rng)
+        transaction = model.transact(nodes, activations, sampler, balances, method='random_share', s=s, rng=rng)
         if i >= burn_in_period:
             transactions_list[i-burn_in_period] = [transaction[term] for term in header]
 
@@ -169,8 +167,6 @@ def run_simulation(params, saved=None, seed=None):
         'T': T,
         'D': D,
         's': s,
-        'dispersion': dispersion,
-        'tau': tau,
         'decimals': decimals,
         'SIZE_SCALE': SIZE_SCALE,
         'LENGTH_SCALE': LENGTH_SCALE,
