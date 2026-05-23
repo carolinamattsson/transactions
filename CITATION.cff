@@ -1,0 +1,43 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite both the software (this file) and the accompanying preprint (see preferred-citation)."
+title: "transactions"
+abstract: "A mechanistic, stochastic, generative model of financial transactions as random walks on activity-driven temporal networks."
+type: software
+authors:
+  - family-names: Mattsson
+    given-names: "Carolina E."
+  - family-names: Cellerini
+    given-names: Claudio
+  - family-names: Ojer
+    given-names: Jaume
+  - family-names: Starnini
+    given-names: Michele
+version: "0.1.0-alpha"
+date-released: "2026-05-23"
+license: MIT
+repository-code: "https://github.com/carolinamattsson/transactions"
+keywords:
+  - financial transactions
+  - temporal networks
+  - random walks
+  - activity-driven networks
+  - generative model
+preferred-citation:
+  type: article
+  title: "Modeling financial transactions via random walks on temporal networks"
+  authors:
+    - family-names: Mattsson
+      given-names: "Carolina E."
+    - family-names: Cellerini
+      given-names: Claudio
+    - family-names: Ojer
+      given-names: Jaume
+    - family-names: Starnini
+      given-names: Michele
+  year: 2026
+  month: 2
+  publisher:
+    name: arXiv
+  doi: "10.48550/arXiv.2602.20713"
+  url: "http://arxiv.org/abs/2602.20713"
+  notes: "arXiv:2602.20713 [physics.soc-ph]"
