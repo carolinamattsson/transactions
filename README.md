@@ -59,7 +59,6 @@ src/                 model + batch runner
   dists.py             distributions (power law, copula, etc.)
   execution.py         single-run + batch driver
   simulations.py       CLI entry point
-  utils.py
 numerical/           numerical solutions for P(m), P(w)
 berka/               empirical analysis on the Berka dataset
 sarafu/              pointers for analysis on the Sarafu dataset (not runnable)
