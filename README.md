@@ -1,16 +1,67 @@
-# Transactions
+# transactions
 
-This is a mechanistic, stochastic, generative model for financial transactions as recorded within a hypothetical universal payment system. The simplest possible version of the model is this: a group of N identical nodes activate as a memoryless point process in continuous time, send a transaction to a random other node, and fund this transaction with a sampled share of their present account balance.
+A mechanistic, stochastic, generative model of financial transactions as random walks on activity-driven temporal networks. Companion code for:
 
-The model itself has three modules:
-* `activate` - this module simulates node activation, given the present time and a node's activity. 
-* `select` - this module simulates selection of a target for a transaction, given node attractivities.
-* `pay` - this module simulates a payment, given two nodes and the present account balances.
+> Mattsson, C. E., Cellerini, C., Ojer, J., & Starnini, M. (2026). *Modeling financial transactions via random walks on temporal networks*. arXiv:2602.20713 [physics.soc-ph]. https://doi.org/10.48550/arXiv.2602.20713
 
-The three modules are strung together in `transact`, which simulates the next transaction. Notably, this involves storing the next node activation for each node in a min heap keyed by the timestamp so that transactions are simulated in time order.
+The simplest version of the model: a group of $N$ nodes activate as a memoryless point process in continuous time, each sends a transaction to a random other node, and funds it with a sampled share of its present account balance. Enforcing fund conservation gives stationary distributions for balances and transaction sizes. When calibrated against real, public, transaction data the model largely reproduces the relevant distributions and matches the expected pattern of strong inflow/outflow correlation.
 
-The system being modelled consists of N nodes, for now with simply a value for each of activity and attractiveness. Initializing the model populates the heap with the first activations, normalizes the attractivity, and gives each node an initial balance.
+## Model structure
 
-The notebook `example.ipynb` contains a simple example of how to use the model. The model is run in a loop, simulating transactions until a specified time limit is reached. The results can be stored in csv or a DataFrame, which can be used for further analysis or visualization.
+The model is three modules strung together in `transact`:
 
-It is also possible to run the model in batch mode from the command line using `simulations.py`. See `tutorial.ipynb` for instructions.
+- `activate` — when does a node fire next? (memoryless or Weibull-burstiness inter-event times)
+- `select` — given a source, who does it pay? (attractivity-weighted via a precomputed `TargetSampler`)
+- `pay` — how much? There are several options, both for discrete and for continous balances.
+
+Activations live in a min-heap keyed by timestamp so transactions are simulated in time order.
+
+## Install
+
+The project ships a conda environment file. Using [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/main):
+
+```
+conda env create -f environment.yml
+conda activate txns
+```
+
+## Quickstart
+
+[`example.ipynb`](example.ipynb) runs the model in a loop until a time limit is reached and stores the resulting transactions in a DataFrame.
+
+## Batch mode
+
+[`src/simulations.py`](src/simulations.py) runs a parameter grid from the command line. Run it from the repo root:
+
+```
+python src/simulations.py --help
+python src/simulations.py --test                  # small, fast sanity run
+python src/simulations.py --output_dir output/    # full run
+```
+
+[`tutorial.ipynb`](tutorial.ipynb) walks through configuring the parameter grid and reading the outputs.
+
+## Repository layout
+
+```
+src/                 model + batch runner
+  model.py             activate / select / pay / transact
+  dists.py             distributions (power law, copula, etc.)
+  execution.py         single-run + batch driver
+  simulations.py       CLI entry point
+  utils.py
+numerical/           numerical solutions for P(m), P(w)
+berka/               empirical analysis on the Berka dataset
+sarafu/              empirical analysis on the Sarafu dataset
+example.ipynb        minimal usage example
+tutorial.ipynb       batch-mode walkthrough
+environment.yml      conda environment
+```
+
+## How to cite
+
+If you use this software, please cite both the software release and the preprint. [`CITATION.cff`](CITATION.cff) contains both. The software DOI is minted per-release via Zenodo from the GitHub tag.
+
+## License
+
+[MIT](LICENSE).
