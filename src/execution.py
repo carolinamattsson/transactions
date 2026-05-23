@@ -1,5 +1,4 @@
 import os
-import sys
 import json
 import time
 import numpy as np
@@ -9,15 +8,6 @@ from itertools import product
 import psutil
 import matplotlib.pyplot as plt
 import gc
-
-# Add directories to Python path
-projdir = os.path.abspath(os.getcwd())
-sys.path.insert(0, projdir)
-#sys.path.extend([
-#    os.path.abspath('/home/ccellerini/adtxns/modular_model/transactions/methods'),
-#    os.path.abspath('/home/ccellerini/adtxns/modular_model/transactions'),
-#    os.path.abspath('/home/ccellerini/adtxns/modular_model'),
-#])
 
 import src.model as model
 import src.dists as dists
@@ -98,7 +88,6 @@ def run_simulation(params, saved=None):
     decimals = params["decimals"]
     N = params["N"]
     T = params["T"]
-    D = params["D"]
     SIZE_SCALE = params["SIZE_SCALE"]
     LENGTH_SCALE = params["LENGTH_SCALE"]
     MEAN_IET = params["MEAN_IET"]
@@ -145,7 +134,6 @@ def run_simulation(params, saved=None):
     # Prepare to write transactions
     header = ["timestamp", "source", "target", "amount", "source_bal", "target_bal"]
 
-    #todo: move saved to params
     if saved is None:
         saved = params['T']
     transactions_list = [None] * saved
@@ -175,7 +163,6 @@ def run_simulation(params, saved=None):
         'attractivity_params': attractivity_params,
         'N': N,
         'T': T,
-        'D': D,
         'xi': xi,
         'decimals': decimals,
         'SIZE_SCALE': SIZE_SCALE,
@@ -316,8 +303,8 @@ def batch_runner(params_grid, output_dir, saved=None):
     plt.title('Memory Usage Over Simulations')
     plt.legend()
     plt.grid()
-    plt.show()
     plt.savefig(os.path.join(output_dir, "memory_usage_plot.png"))
+    plt.close()
 
     print("All simulations completed.")
     print(f"Total execution time: {time.time() - loop_start:.2f} seconds")

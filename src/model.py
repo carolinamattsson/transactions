@@ -8,8 +8,6 @@ from dataclasses import dataclass
 from decimal import Decimal
 from scipy.stats import betabinom
 
-from src.dists import paired_samples, random_unifs, scale_pareto, scale_pwl
-
 def create_nodes(N, activity=1, attractivity=1, spending=0.5, burstiness=1, mean_iet=1):
     '''
     Initialize node attributes from the given lists

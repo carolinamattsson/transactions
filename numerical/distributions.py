@@ -1,7 +1,7 @@
 """
-occupancy_distributions.py - Numerical Integration for P(m) and P(w)
+distributions.py - Numerical Integration for P(m) and P(w)
 
-This module computes the occupancy distribution P(m) and transaction size 
+This module computes the occupancy distribution P(m) and transaction size
 distribution P(w) for random walkers on activity-driven temporal networks,
 as described in:
 

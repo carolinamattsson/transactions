@@ -8,7 +8,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pa
 
 import src.execution as execution
 import src.dists as dists
-import src.model as model
 
 if __name__ == "__main__":
     # Set up argument parser
@@ -30,14 +29,13 @@ if __name__ == "__main__":
     seed_setup = args.seed_setup
     seed_run = args.seed_run
 
-    # Constants as parameters
+    # Constants as parameters. MEAN_IET is set to one Sarafu time unit so the
+    # default grid is comparable to the paper; override for other datasets.
     SIZE_SCALE = 1
     LENGTH_SCALE = 6
     MEAN_IET = 43706315  # 1 Sarafu time unit in seconds
     N = 25_000 // SIZE_SCALE
     T = int(500_000 * LENGTH_SCALE)
-    # T = 2
-    D = T / MEAN_IET #useless
     saved = 500_000
 
     if test:
@@ -86,42 +84,22 @@ if __name__ == "__main__":
         # ('joe', 1, False),
     ]
 
+    # Every value must be a list — create_parameter_grid takes the product over them.
     parameter_dict = {
-        # "seed": seed,
-        # "xi": [2,5000],#np.logspace(0, 3, 6).astype(int),#[1],
-        # "xi": [2*N],
-        # "xi": [0.1,2,5,20,100,2000,10000],
-        # "xi": [1,N,5*N],
-        # "xi": [0.2,2,20,200,2000,N//2,N,5*N],
-        # "xi": [1,250,5000,N,N*1000,N*100_000],
-        # "xi": [1,5,10,20,50,100,250],
-        "xi":[1,2,3,5,10], #! always use lists
-        # "spending_rate": [dist[2](N) for dist in spending_rate_list],
-        # "spending_rate_name": [dist[0] for dist in spending_rate_list],
+        "xi": [1, 2, 3, 5, 10],
         "spending_rate": spending_rate_list,
-        # "initial_bal": [dist[2] for dist in initial_bal_list],
-        # "initial_bal_name": [dist[0] for dist in initial_bal_list],
         "initial_balance": initial_bal_list,
         "decimals": [3],
-        # "decimals": [1,2,3,4,5],
-        "copula": copulas, 
+        "copula": copulas,
         "activity_distribution": activity_distributions,
         "attractivity_distribution": attractivity_distributions,
         "N": [N],
         "T": [T],
-        "D": [D],
         "SIZE_SCALE": [SIZE_SCALE],
         "LENGTH_SCALE": [LENGTH_SCALE],
         "MEAN_IET": [MEAN_IET],
-        # "burstiness": np.logspace(-1, 2, 6),
-        # "burstiness": [1],
-        # "burstiness": [0.05,0.5,1,5],
         "burstiness": [0.5, 0.75, 1, 1.5, 3],
     }
-
-    if not test:
-        print(output_dir)
-        input('Continue?')  # Pause for confirmation in full run mode
 
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
