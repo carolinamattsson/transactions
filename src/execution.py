@@ -32,36 +32,42 @@ def convert_metadata_to_serializable(metadata):
     }
 
 # Generate parameter grid
-def create_parameter_grid(params,seed=None):
+def create_parameter_grid(params, seed=None, seed_setup=None, seed_run=None):
     """
     Generate a grid of parameters for batch simulations.
+
+    Each combination gets a (seed_setup, seed_run) pair. Both are derived from
+    `seed` (the master seed) so a full grid is reproducible from one number.
+    Pass `seed_setup` or `seed_run` explicitly to pin that side across every
+    combination — useful for sweeping run-realizations on a fixed population.
     """
     keys, values = zip(*params.items())
     combinations = [dict(zip(keys, combination)) for combination in product(*values)]
-     # Generate a list of additional seeds
     rng = np.random.default_rng(seed=seed)
-    seeds = rng.integers(low=0, high=2**32 - 1, size=len(combinations))
-    # Add the seeds to the parameter combinations
+    setup_seeds = rng.integers(low=0, high=2**32 - 1, size=len(combinations))
+    run_seeds = rng.integers(low=0, high=2**32 - 1, size=len(combinations))
     for i, combination in enumerate(combinations):
-        combination['seed'] = seeds[i]
+        combination['seed_setup'] = seed_setup if seed_setup is not None else setup_seeds[i]
+        combination['seed_run'] = seed_run if seed_run is not None else run_seeds[i]
     return combinations
 
 # Generate activity and attractivity samples
-def generate_activity_attractivity(N, copula_type, copula_param, reversed_copula, activity_generator, attractivity_generator):
+def generate_activity_attractivity(N, copula_type, copula_param, reversed_copula, activity_generator, attractivity_generator, rng):
     unif_act, unif_att = dists.paired_samples(
         N,
         params={
             'copula': copula_type,
             'theta': copula_param,
             'reversed': reversed_copula
-        }
+        },
+        rng=rng,
     )
     vect_act = activity_generator(unif_act)
     vect_att = attractivity_generator(unif_att)
     return vect_act, vect_att
 
 
-def run_simulation(params, saved=None, seed=None):
+def run_simulation(params, saved=None):
     """
     Run a single simulation.
 
@@ -86,7 +92,8 @@ def run_simulation(params, saved=None, seed=None):
     start_time = time.time()
 
     # Extract parameters
-    seed = params["seed"]
+    seed_setup = params["seed_setup"]
+    seed_run = params["seed_run"]
     s = params["s"]
     decimals = params["decimals"]
     N = params["N"]
@@ -97,11 +104,12 @@ def run_simulation(params, saved=None, seed=None):
     MEAN_IET = params["MEAN_IET"]
     burstiness = params["burstiness"]
 
-    # Set random seed for reproducibility
-    # TODO: Figure out how to get the distributions to use the seed
-    #    np.random.seed(seed)
-    #    dists.set_seed(seed) # Copilot halucinated this but maybe it is needed
-    rng = np.random.default_rng(seed)
+    # Two independent RNGs: setup draws the population (h(s), activity/attractivity,
+    # initial balances); run draws the transaction sequence (first activations + the
+    # transact() loop). Fixing setup and varying run gives multiple realizations
+    # over the same nodes.
+    setup_rng = np.random.default_rng(seed_setup)
+    run_rng = np.random.default_rng(seed_run)
 
     # Extract distributions and generators
     sprate_type, sprate_params, sprate_generator = params["spending_rate"]
@@ -117,12 +125,13 @@ def run_simulation(params, saved=None, seed=None):
         copula_param=copula_param,
         reversed_copula=reversed_copula,
         activity_generator=activity_generator,
-        attractivity_generator=attractivity_generator
+        attractivity_generator=attractivity_generator,
+        rng=setup_rng,
     )
 
     # Generate spending rates and initial balances
-    spending_rate = sprate_generator(N)
-    initial_bal = inbal_generator(N)
+    spending_rate = sprate_generator(N, setup_rng)
+    initial_bal = inbal_generator(N, setup_rng)
 
     # Initialize the model
     nodes = model.create_nodes(
@@ -130,7 +139,7 @@ def run_simulation(params, saved=None, seed=None):
         spending=spending_rate, mean_iet=MEAN_IET, burstiness=burstiness
     )
     sampler = model.build_target_sampler(nodes)
-    activations = model.initialize_activations(nodes)
+    activations = model.initialize_activations(nodes, rng=run_rng)
     balances = model.initialize_balances(nodes, balances=initial_bal, decimals=decimals)
 
     # Prepare to write transactions
@@ -144,7 +153,7 @@ def run_simulation(params, saved=None, seed=None):
 
     # Run the model
     for i in range(T):
-        transaction = model.transact(nodes, activations, sampler, balances, method='random_share', s=s, rng=rng)
+        transaction = model.transact(nodes, activations, sampler, balances, s=s, rng=run_rng)
         if i >= burn_in_period:
             transactions_list[i-burn_in_period] = [transaction[term] for term in header]
 
@@ -154,7 +163,8 @@ def run_simulation(params, saved=None, seed=None):
 
     # Compile metadata
     metadata = {
-        'seed': seed,
+        'seed_setup': seed_setup,
+        'seed_run': seed_run,
         'sprate_type': sprate_type,
         'sprate_params': sprate_params,
         'inbal_type': inbal_type,

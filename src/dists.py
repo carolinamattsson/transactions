@@ -10,10 +10,10 @@ from scipy import stats
 
 import pycop.simulation as cop
 
-def paired_samples(N, 
-                   same=False, 
+def paired_samples(N,
+                   same=False,
                    params={'copula':None},
-                   rng=np.random.default_rng()):
+                   rng=None):
     '''
     Initialize activity and fitness values for N nodes, according to the specified distributions.
     By default, the values are independently sampled.
@@ -22,6 +22,8 @@ def paired_samples(N,
     The parameters for the distributions are given as dictionaries.
         The options are 'pareto' or 'pwl' or 'uniform' or 'constant', with their relevant parameters.
     '''
+    if rng is None:
+        rng = np.random.default_rng()
     # create activity and attractivity distributions, together or separately
     unifs = {}
     if same or ('theta' in params and np.isinf(params['theta'])):
@@ -29,7 +31,7 @@ def paired_samples(N,
         unifs['att'] = unifs['act']
     else:
         # unless a copula and its parameters are specified, the sampled distributions are independent
-        unifs['act'], unifs['att'] = random_unifs(N, **params)
+        unifs['act'], unifs['att'] = random_unifs(N, rng=rng, **params)
     # return the vectors
     return unifs['act'], unifs['att']
 
@@ -74,15 +76,22 @@ def scale_pwl(unif, beta=1.0, loc=0, scale=1):
     # now return
     return pwl
 
-def random_unifs(N, copula=None, reversed=False, theta=0, resample=100, rng=np.random.default_rng()):
+def random_unifs(N, copula=None, reversed=False, theta=0, resample=100, rng=None):
     '''
     Generate two vectors size N with uniform distributed values coupled by the given copula
     Resample from the copula up to 'resample' numbers of times so there are no 1s in the reversed vector
     # nice one is reversed 'clayton' with theta=5
+
+    Note: pycop's simu_archimedean uses numpy's global RNG. To keep this call
+    deterministic from a passed-in rng, we seed the numpy global from the rng
+    immediately before invocation. This affects the numpy global state.
     '''
+    if rng is None:
+        rng = np.random.default_rng()
     if copula is not None and theta != 0:
         sample = 0
-        while sample < resample: 
+        while sample < resample:
+            np.random.seed(int(rng.integers(0, 2**31 - 1)))
             unif_1, unif_2 = cop.simu_archimedean(copula, 2, N, theta=theta)
             if not np.any(unif_1==0) and not np.any(unif_2==0):
                 break

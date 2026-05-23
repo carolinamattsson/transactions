@@ -10,12 +10,10 @@ from scipy.stats import betabinom
 
 from src.dists import paired_samples, random_unifs, scale_pareto, scale_pwl
 
-def create_nodes(N, activity=1, attractivity=1, spending=0.5, burstiness=1, mean_iet=1, seed=321):
+def create_nodes(N, activity=1, attractivity=1, spending=0.5, burstiness=1, mean_iet=1):
     '''
     Initialize node attributes from the given lists
     '''
-    np.random.seed(seed)
-
     def list_len_N(value, name):
         if isinstance(value, (int, float, Decimal)):
             return np.full(N, value)
@@ -58,24 +56,28 @@ def create_nodes(N, activity=1, attractivity=1, spending=0.5, burstiness=1, mean
 
     return nodes
 
-def initialize_activations(nodes, mean_iet=1):
+def initialize_activations(nodes, mean_iet=1, rng=None):
     '''
     Initialize the activation heap for the given nodes
     '''
-    activations = [(activate(0, nodes[node]["act"], nodes[node]["iet"], mean_iet), node) for node in nodes]
+    if rng is None:
+        rng = np.random.default_rng()
+    activations = [(activate(0, nodes[node]["act"], nodes[node]["iet"], mean_iet, rng=rng), node) for node in nodes]
     hq.heapify(activations)
     return activations
 
 
-def activate(now,activity,distribution,mean_iet = 1,rng=np.random.default_rng()): 
+def activate(now, activity, distribution, mean_iet=1, rng=None):
     '''
     Get the next activation time for the given node
     '''
+    if rng is None:
+        rng = np.random.default_rng()
     # draw inter-event time from the relevant distribution
     scale_act = 1/activity # invert the activity
     scale_iet, k = distribution
     l = scale_act * scale_iet * mean_iet
-    next = now + l * rng.weibull(a=k) 
+    next = now + l * rng.weibull(a=k)
     return next
 
 
@@ -178,59 +180,54 @@ def initialize_balances(nodes,balances=None,decimals=4):
     return balances
 
  
-def select(attractivities, current_node, rng=np.random.default_rng()):
+def select(attractivities, current_node, rng=None):
     '''
     Select a node to transact with, ensuring no self-selection.
-    
+
     Parameters:
     - attractivities: dict, keys are node IDs, values are probabilities
     - current_node: the node that is selecting (to avoid self-selection)
     - rng: random number generator (default: np.random.default_rng())
-    
+
     Returns:
     - node_j: the selected node
     '''
-    # Remove self from selection
+    if rng is None:
+        rng = np.random.default_rng()
     available_nodes = {k: v for k, v in attractivities.items() if k != current_node}
-    
-    # Normalize probabilities to sum to 1
+
     total_weight = sum(available_nodes.values())
     probabilities = [v / total_weight for v in available_nodes.values()]
 
-    # Select target node
     node_j = rng.choice(list(available_nodes.keys()), p=probabilities)
-    
     return node_j
 
 
-def pay_random_share(node_i, node_j, balances, p, s, rng=np.random.default_rng()):
+def pay_random_share(node_i, node_j, balances, p, s, rng=None):
     '''
     Pay the selected node a random share of the available balance:
         - If the balance is continuous, the transaction size is a Beta sampled fraction.
         - If the balance is discrete, the transaction size is a Beta Binomial sample.
 
     '''
+    if rng is None:
+        rng = np.random.default_rng()
     beta_a, beta_b = p * s, (1 - p) * s
-    # todo: 'a' and 'b' parametrized with balance and overdispersion parameter
 
-    if isinstance(balances[node_i],Decimal):
+    if isinstance(balances[node_i], Decimal):
         exp = balances[node_i].as_tuple().exponent # -(number of decimal places)
         n = int(balances[node_i].scaleb(-exp))
-        txn_size_dist = betabinom(n,beta_a,beta_b) # integer valued distribution
-        txn_size = txn_size_dist.rvs() # sample from the distribution
-        # Note: betabinom.rvs() draws from scipy's global RNG, not the `rng` passed in.
-        # Known reproducibility wart on the discrete-balance path; ignore unless seed-fixing matters.
+        txn_size = int(betabinom.rvs(n, beta_a, beta_b, random_state=rng))
         txn_size = Decimal(txn_size).scaleb(exp) # integer to decimal (e.g.: 1234 -> 12.34)
     else:
-        txn_size = balances[node_i]*rng.beta(beta_a,beta_b)
+        txn_size = balances[node_i] * rng.beta(beta_a, beta_b)
     # process the transaction
     balances[node_i] -= txn_size
     balances[node_j] += txn_size
-    # return the transaction details
     return txn_size
 
 
-def pay_share(node_i, node_j, share, balances, rng=np.random.default_rng()):
+def pay_share(node_i, node_j, share, balances, rng=None):
     '''
     Pay the selected node a share of the available balance:
         - If the balance is continuous, the transaction size is a fixed fraction.
@@ -242,21 +239,21 @@ def pay_share(node_i, node_j, share, balances, rng=np.random.default_rng()):
         For balances[1] = Decimal('123.4') with exp = -1:
             123.4 -> 1234 (scaled), random sample -> 12, rescaled -> 1.2 .
     '''
-    # sample transaction weight
-    if isinstance(balances[node_i],Decimal):
+    if rng is None:
+        rng = np.random.default_rng()
+    if isinstance(balances[node_i], Decimal):
         exp = balances[node_i].as_tuple().exponent
-        txn_size = rng.binomial(balances[node_i].scaleb(-exp),share) 
+        txn_size = rng.binomial(balances[node_i].scaleb(-exp), share)
         txn_size = Decimal(txn_size).scaleb(exp)
     else:
-        txn_size = balances[node_i]*share
+        txn_size = balances[node_i] * share
     # process the transaction
     balances[node_i] -= txn_size
     balances[node_j] += txn_size
-    # return the transaction size
     return txn_size
 
 
-def transact(nodes, activations, sampler, balances, rng=np.random.default_rng(), *, record_self=False, record_zero=True, **kwargs):
+def transact(nodes, activations, sampler, balances, rng=None, *, record_self=False, record_zero=True, **kwargs):
     '''
     Simulate the next transaction using a TargetSampler.
 
@@ -273,6 +270,8 @@ def transact(nodes, activations, sampler, balances, rng=np.random.default_rng(),
     BetaBinomial / Binomial draws that legitimately yield zero, which the
     caller may or may not want to record.
     '''
+    if rng is None:
+        rng = np.random.default_rng()
     # Select next active node
     now, node_i = hq.heappop(activations)
 
@@ -292,7 +291,7 @@ def transact(nodes, activations, sampler, balances, rng=np.random.default_rng(),
     if s is not None:
         amount = pay_random_share(node_i, node_j, balances, p, s, rng=rng)
     else:
-        amount = pay_share(node_i, node_j, nodes[node_i]["spr"], balances)
+        amount = pay_share(node_i, node_j, nodes[node_i]["spr"], balances, rng=rng)
 
     # Skip-the-record semantics: advance the heap but emit no transaction.
     # The amount==0 mutations in pay_*() are no-ops, so balances are unchanged.
@@ -316,13 +315,15 @@ def transact(nodes, activations, sampler, balances, rng=np.random.default_rng(),
     }
 
 
-def interact(nodes, activations, sampler, rng=np.random.default_rng(), *, record_self=False):
+def interact(nodes, activations, sampler, rng=None, *, record_self=False):
     '''
     Simulate the next interaction using a TargetSampler.
 
     Returns None when sampler.sample_self is True, record_self is False, and a
     self-draw occurred (the activation is still advanced).
     '''
+    if rng is None:
+        rng = np.random.default_rng()
     # select next active node from the heap
     now, node_i = hq.heappop(activations)
     node_j = sample_target(sampler, node_i, rng)

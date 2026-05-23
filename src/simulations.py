@@ -1,28 +1,34 @@
-import src.execution as execution
-import src.dists as dists
-import src.model as model
-import os 
+import os
 import sys
 import numpy as np
 import argparse
+
+# Allow `python src/simulations.py` from the repo root by putting the repo root on sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+
+import src.execution as execution
+import src.dists as dists
+import src.model as model
 
 if __name__ == "__main__":
     # Set up argument parser
     parser = argparse.ArgumentParser(description="Run a batch of transaction simulations.")
     parser.add_argument("--test", action="store_true", help="Run in test mode (default: False)")
-    parser.add_argument("--output_dir", type=str, default="output/", help="Output directory for results")
-    parser.add_argument("--seed", type=int, default=None, help="Specify a random seed")
+    parser.add_argument("--output-dir", type=str, default="output/", help="Output directory for results")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Master seed; each combination gets a derived (seed_setup, seed_run) pair.")
+    parser.add_argument("--seed-setup", type=int, default=None,
+                        help="Pin the setup seed (population draw) across every combination.")
+    parser.add_argument("--seed-run", type=int, default=None,
+                        help="Pin the run seed (transaction realization) across every combination.")
 
     # Parse arguments
     args = parser.parse_args()
     test = args.test
     output_dir = args.output_dir
-    seed = args.seed #  from the given one
-
-    # Initialize random number generator
-    rng = np.random.default_rng(seed=seed)
-    # If you want the seed to work, probably you need to create these generators inside run_simulation
-    # My suggestion is to pass this original seed into the parameter grid and make one per simulation
+    seed = args.seed
+    seed_setup = args.seed_setup
+    seed_run = args.seed_run
 
     # Constants as parameters
     SIZE_SCALE = 1
@@ -42,23 +48,22 @@ if __name__ == "__main__":
 
     print(f"Iteration : {T:_}")
     print(f"Save : {saved:_}")
-    print(f"Random seed: {seed}")
+    print(f"Master seed: {seed} | seed_setup pin: {seed_setup} | seed_run pin: {seed_run}")
 
-    # Define spending rates
+    # Generators take (N, rng) so each call uses the per-simulation setup_rng.
     spending_rate_list = [
-        ("uniform", [0, 1], lambda N: rng.uniform(1e-16, 1, N)), #*('name',[parameters], actual distribution as lambda of N)
-        # ("beta", [0.4,0.6], lambda N: rng.beta(0.4,0.6,N))
+        ("uniform", [0, 1], lambda N, rng: rng.uniform(1e-16, 1, N)), #*('name',[parameters], actual distribution as lambda of (N, rng))
+        # ("beta", [0.4,0.6], lambda N, rng: rng.beta(0.4,0.6,N))
     ]
 
     # Define initial balances
     initial_bal_list = [
-        # ("constant", [100], lambda N: 100 * np.ones(N)),
-        # ("uniform", [0, 1], lambda N: rng.uniform(1e-16, 1, N)),
-        # ("pareto", [0.9], lambda N: 15*rng.pareto(0.9,N)),
-        ("constant", [1000], lambda N: 1000 * np.ones(N)),
-        # ("lognormal",[200,1], lambda N: 200*rng.lognormal(1,size=N)),
-        # ("uniform", [0,2000], lambda N: rng.uniform(1e-16,2000,N)),         
-
+        # ("constant", [100], lambda N, rng: 100 * np.ones(N)),
+        # ("uniform", [0, 1], lambda N, rng: rng.uniform(1e-16, 1, N)),
+        # ("pareto", [0.9], lambda N, rng: 15*rng.pareto(0.9,N)),
+        ("constant", [1000], lambda N, rng: 1000 * np.ones(N)),
+        # ("lognormal",[200,1], lambda N, rng: 200*rng.lognormal(1,size=N)),
+        # ("uniform", [0,2000], lambda N, rng: rng.uniform(1e-16,2000,N)),
     ]
 
     # Define activity and attractivity distributions
@@ -122,7 +127,9 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
 
     # Generate parameter grid
-    parameter_grid = execution.create_parameter_grid(parameter_dict,seed=seed)
+    parameter_grid = execution.create_parameter_grid(
+        parameter_dict, seed=seed, seed_setup=seed_setup, seed_run=seed_run
+    )
 
     # Run batch simulations
     execution.batch_runner(parameter_grid,output_dir,saved=saved)
