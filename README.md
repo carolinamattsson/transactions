@@ -20,11 +20,11 @@ The `pay` module covers both **continuous balances** (floats) and **discrete bal
 
 - **Fraction** (continuous, no `xi`): the transaction is $p \cdot \mathrm{balance}$ — a deterministic share equal to the source's spending propensity $p$ (the paper's per-node $s$).
 - **Fixed-probability sample** (discrete, no `xi`): $\mathrm{Binomial}(\mathrm{balance}, p)$ — each integer unit of the source balance jumps with probability $p$.
-- **Variable-probability sample** (with precision `xi`): the jump probability $q$ is itself drawn from $\mathrm{Beta}(p \cdot \xi,\ (1-p) \cdot \xi)$, realized as $q \cdot \mathrm{balance}$ in the continuous case and as $\mathrm{Beta\text{-}Binomial}(\mathrm{balance}, p \cdot \xi, (1-p) \cdot \xi)$ in the discrete case. This is the paper's main pay rule.
+- **Variable-probability sample** (with precision `xi`): the jump probability $q$ is itself drawn from $\mathrm{Beta}(p \cdot \xi,\ (1-p) \cdot \xi)$, realized as $q \cdot \mathrm{balance}$ in the continuous case and as $\mathrm{Beta\text{-}Binomial}(\mathrm{balance}, p \cdot \xi, (1-p) \cdot \xi)$ in the discrete case. This is the overdispersed pay rule introduced in the paper.
 
-The sampler exposes a few knobs that aren't visible in the simplest setup. **Self-loops** can be admitted or excluded from the sampling support (`sample_self`), and if admitted, can be either emitted as transactions or treated as activations that just advance the clock (`record_self`). **Storage** of the per-source target distribution scales: at or below `matrix_n_threshold` (default 20,000), targets are drawn via searchsorted on a precomputed $(N, N)$ cumulative-row matrix; above it, the sampler falls back to a shared $(N,)$ cumulative attractivity vector with rejection. **Zero-amount transactions** (which can arise from legitimate BetaBin/Binomial draws or from float64 balance underflow on hyperactive nodes) can be emitted or skipped (`record_zero`).
+There are a few knobs that aren't visible in the simplest setup. **Self-loops** can be admitted or excluded from the sampling support (`sample_self`), and if admitted, can be either emitted as transactions or treated as activations that just advance the clock (`record_self`). **Storage** of the per-source target distribution scales: at or below `matrix_n_threshold` (default 20,000), targets are drawn via searchsorted on a precomputed $(N, N)$ cumulative-row matrix; above it, the sampler falls back to a shared $(N,)$ cumulative attractivity vector with rejection. **Zero-amount transactions** (which can arise from legitimate BetaBin/Binomial draws or from float64 balance underflow on hyperactive nodes) can be emitted or skipped (`record_zero`).
 
-**Inputs are draws**, not hardcoded values: per-node spending propensity $h(s)$, the joint activity/attractivity distribution (optionally via a copula), and initial balances each come from generators. The simulator takes **two independent seeds** — `seed_setup` (the population draw: $h(s)$, activity, attractivity, initial balances) and `seed_run` (the realization: first activations and the `transact()` loop). Fixing setup and varying run gives multiple realizations over the same nodes; fixing run and varying setup studies the same realization-RNG across different populations.
+**Input construction uses draws**, not hardcoded values: per-node spending propensity $h(s)$, the joint activity/attractivity distribution (optionally via a copula), and initial balances each come from generators. The simulator takes **two independent seeds** — `seed_setup` (the population draw: $h(s)$, activity, attractivity, initial balances) and `seed_run` (the realization: first activations and the `transact()` loop). Fixing setup and varying run gives multiple realizations over the same nodes; fixing run and varying setup studies the same realization-RNG across different populations.
 
 ## Install
 
@@ -62,7 +62,7 @@ src/                 model + batch runner
   utils.py
 numerical/           numerical solutions for P(m), P(w)
 berka/               empirical analysis on the Berka dataset
-sarafu/              empirical analysis on the Sarafu dataset
+sarafu/              pointers for analysis on the Sarafu dataset (not runnable)
 example.ipynb        minimal usage example
 tutorial.ipynb       batch-mode walkthrough
 environment.yml      conda environment
