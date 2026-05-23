@@ -203,16 +203,17 @@ def select(attractivities, current_node, rng=None):
     return node_j
 
 
-def pay_random_share(node_i, node_j, balances, p, s, rng=None):
+def pay_random_share(node_i, node_j, balances, p, xi, rng=None):
     '''
     Pay the selected node a random share of the available balance:
         - If the balance is continuous, the transaction size is a Beta sampled fraction.
         - If the balance is discrete, the transaction size is a Beta Binomial sample.
 
+    `xi` is the Beta-Binomial precision (the paper's $\\xi$).
     '''
     if rng is None:
         rng = np.random.default_rng()
-    beta_a, beta_b = p * s, (1 - p) * s
+    beta_a, beta_b = p * xi, (1 - p) * xi
 
     if isinstance(balances[node_i], Decimal):
         exp = balances[node_i].as_tuple().exponent # -(number of decimal places)
@@ -286,10 +287,10 @@ def transact(nodes, activations, sampler, balances, rng=None, *, record_self=Fal
 
     # Pay the selected node a share of the available balance
     p = nodes[node_i]["spr"]
-    s = kwargs.get("s", None) # BetaBin precision (the SM's xi); None falls back to Binomial
+    xi = kwargs.get("xi", None) # BetaBin precision (paper's xi); None falls back to Binomial / fixed-fraction
 
-    if s is not None:
-        amount = pay_random_share(node_i, node_j, balances, p, s, rng=rng)
+    if xi is not None:
+        amount = pay_random_share(node_i, node_j, balances, p, xi, rng=rng)
     else:
         amount = pay_share(node_i, node_j, nodes[node_i]["spr"], balances, rng=rng)
 

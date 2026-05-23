@@ -88,14 +88,14 @@ if __name__ == "__main__":
 
     parameter_dict = {
         # "seed": seed,
-        # "s": [2,5000],#np.logspace(0, 3, 6).astype(int),#[1],
-        # "s": [2*N],
-        # "s": [0.1,2,5,20,100,2000,10000],
-        # "s": [1,N,5*N],
-        # "s": [0.2,2,20,200,2000,N//2,N,5*N],
-        # "s": [1,250,5000,N,N*1000,N*100_000],
-        # "s": [1,5,10,20,50,100,250],
-        "s":[1,2,3,5,10], #! always use lists
+        # "xi": [2,5000],#np.logspace(0, 3, 6).astype(int),#[1],
+        # "xi": [2*N],
+        # "xi": [0.1,2,5,20,100,2000,10000],
+        # "xi": [1,N,5*N],
+        # "xi": [0.2,2,20,200,2000,N//2,N,5*N],
+        # "xi": [1,250,5000,N,N*1000,N*100_000],
+        # "xi": [1,5,10,20,50,100,250],
+        "xi":[1,2,3,5,10], #! always use lists
         # "spending_rate": [dist[2](N) for dist in spending_rate_list],
         # "spending_rate_name": [dist[0] for dist in spending_rate_list],
         "spending_rate": spending_rate_list,

@@ -94,7 +94,7 @@ def run_simulation(params, saved=None):
     # Extract parameters
     seed_setup = params["seed_setup"]
     seed_run = params["seed_run"]
-    s = params["s"]
+    xi = params["xi"]
     decimals = params["decimals"]
     N = params["N"]
     T = params["T"]
@@ -153,7 +153,7 @@ def run_simulation(params, saved=None):
 
     # Run the model
     for i in range(T):
-        transaction = model.transact(nodes, activations, sampler, balances, s=s, rng=run_rng)
+        transaction = model.transact(nodes, activations, sampler, balances, xi=xi, rng=run_rng)
         if i >= burn_in_period:
             transactions_list[i-burn_in_period] = [transaction[term] for term in header]
 
@@ -176,7 +176,7 @@ def run_simulation(params, saved=None):
         'N': N,
         'T': T,
         'D': D,
-        's': s,
+        'xi': xi,
         'decimals': decimals,
         'SIZE_SCALE': SIZE_SCALE,
         'LENGTH_SCALE': LENGTH_SCALE,
